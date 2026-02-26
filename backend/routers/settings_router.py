@@ -39,15 +39,15 @@ async def update_settings_api(
         if value is not None:
             update_data[field] = value
 
-    # Validate encryption
-    if 'smtp_encryption' in update_
+    # Validate encryption type
+    if 'smtp_encryption' in update_data:
         if update_data['smtp_encryption'] not in ['SSL', 'TLS', 'NONE']:
             return JSONResponse(status_code=400, content={"detail": "Invalid SMTP encryption"})
 
-    # Update
+    # Update database
     async for session in database.get_session():
         await session.execute(
-            update(Settings).where(Settings.id == 1).values(**update_data)
+            update(database.Settings).where(database.Settings.id == 1).values(**update_data)
         )
         await session.commit()
 
