@@ -1,7 +1,13 @@
-# backend/routers/targets_router.py
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
-from ..database import database
+from fastapi.templating import Jinja2Templates
+from sqlalchemy import delete
+
+# Local imports
+from ..database import database, Targets
+
+# Template setup
+templates = Jinja2Templates(directory="backend/templates")
 
 router = APIRouter(tags=["targets"])
 
@@ -16,10 +22,20 @@ async def get_targets_api():
     return {"targets": targets}
 
 @router.post("/targets/api")
-async def add_target_api(industry: str = Form(...), country: str = Form(...), state: str = Form(None)):
+async def add_target_api(
+    industry: str = Form(...),
+    country: str = Form(...),
+    state: str = Form(None)
+):
     if not industry or not country:
         return JSONResponse(status_code=400, content={"detail": "Industry and country required"})
-    await database.create_target({"industry": industry.strip(), "country": country.strip(), "state": state.strip() if state else None})
+    
+    await database.create_target({
+        "industry": industry.strip(),
+        "country": country.strip(),
+        "state": state.strip() if state else None
+    })
+    
     return JSONResponse({"success": True, "message": "Target added"})
 
 @router.delete("/targets/api/{target_id}")
