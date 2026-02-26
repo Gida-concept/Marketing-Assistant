@@ -1,16 +1,16 @@
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
-
-# Local imports
+# backend/routers/leads_router.py
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from ..database import database
 
-router = APIRouter()
+router = APIRouter(tags=["leads"])
 
-@router.get("/api")
+@router.get("/leads", response_class=HTMLResponse)
+async def leads_page(request: Request):
+    leads = await database.get_all_leads()
+    return templates.TemplateResponse("leads.html", {"request": request, "leads": leads})
+
+@router.get("/leads/api")
 async def get_leads_api():
-    async for session in database.get_session():
-        result = await session.execute("SELECT * FROM leads ORDER BY id DESC")
-        rows = result.fetchall()
-        keys = result.keys()
-        leads = [dict(zip(keys, row)) for row in rows]
-        return {"leads": leads}
+    leads = await database.get_all_leads()
+    return {"leads": leads}
