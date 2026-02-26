@@ -1,3 +1,5 @@
+from .scheduler import scheduler
+from contextlib import asynccontextmanager
 import asyncio
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select
 from sqlalchemy.ext.declarative import declarative_base
@@ -187,3 +189,4 @@ async def lifespan(app):
     
     # Shutdown
     await scheduler.shutdown()
+
