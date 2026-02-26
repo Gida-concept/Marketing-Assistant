@@ -1,5 +1,4 @@
-from .scheduler import scheduler
-from contextlib import asynccontextmanager
+# backend/database.py
 import asyncio
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select
 from sqlalchemy.ext.declarative import declarative_base
@@ -62,7 +61,7 @@ class Leads(Base):
     h1_count = Column(Integer, nullable=True)
     priority_score = Column(Integer, default=0)
     audit_notes = Column(Text, nullable=True)
-    status = Column(String(20), default='SCRAPED')  # SCRAPED | AUDITED | EMAILED
+    status = Column(String(20), default='SCRAPED')
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Config(Base):
@@ -122,46 +121,31 @@ class Database:
                 session.add(default_settings)
                 await session.commit()
             
-            # Initialize engine state if not exists
             result = await session.execute(select(EngineState))
             engine_state = result.scalars().first()
-            
             if not engine_state:
-                default_engine_state = EngineState(
-                    is_enabled=False,
-                    is_running=False
-                )
+                default_engine_state = EngineState(is_enabled=False, is_running=False)
                 session.add(default_engine_state)
                 await session.commit()
             
-            # Initialize config if not exists
             result = await session.execute(select(Config))
             config = result.scalars().first()
-            
             if not config:
                 default_config = Config(
-                    industry_idx=0,
-                    location_idx=0,
-                    state_idx=0,
-                    pagination_start=0,
-                    last_emailed_lead_id=0
+                    industry_idx=0, location_idx=0, state_idx=0,
+                    pagination_start=0, last_emailed_lead_id=0
                 )
                 session.add(default_config)
                 await session.commit()
             
-            # Initialize stats if not exists
             result = await session.execute(select(Stats))
             stats = result.scalars().first()
-            
             if not stats:
-                default_stats = Stats(
-                    emails_sent_today=0
-                )
+                default_stats = Stats(emails_sent_today=0)
                 session.add(default_stats)
                 await session.commit()
     
     async def get_session(self):
-        """Get async database session"""
         async with self.async_session() as session:
             try:
                 yield session
@@ -173,20 +157,3 @@ class Database:
 
 # Global database instance
 database = Database()
-
-# Lifespan handler for FastAPI
-@asynccontextmanager
-async def lifespan(app):
-    """
-    FastAPI lifespan handler for scheduler management
-    Starts scheduler on startup, shuts down on shutdown
-    """
-    # Startup
-    await database.init_db()  # Ensure DB is initialized
-    await scheduler.start()
-    
-    yield  # Application runs here
-    
-    # Shutdown
-    await scheduler.shutdown()
-
