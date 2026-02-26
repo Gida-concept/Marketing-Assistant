@@ -1,7 +1,12 @@
-# backend/routers/leads_router.py
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+
+# Local imports
 from ..database import database
+
+# Template setup
+templates = Jinja2Templates(directory="backend/templates")
 
 router = APIRouter(tags=["leads"])
 
