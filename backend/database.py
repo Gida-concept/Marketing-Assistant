@@ -1,13 +1,10 @@
-import asyncio
+# backend/database.py
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select, update
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from datetime import datetime
-import aiosqlite
-import os
 
-# Database configuration
 DATABASE_URL = "sqlite+aiosqlite:///./backend/agency.db"
 Base = declarative_base()
 
@@ -122,41 +119,35 @@ class Database:
                 await session.close()
 
     # Getters
-    async def get_settings(self):
-        async for session in self.get_session():
-            return (await session.execute(select(Settings).limit(1))).scalars().first()
-
     async def get_engine_state(self):
         async for session in self.get_session():
-            return (await session.execute(select(EngineState).limit(1))).scalars().first()
+            result = await session.execute(select(EngineState).limit(1))
+            return result.scalars().first()
+
+    async def get_settings(self):
+        async for session in self.get_session():
+            result = await session.execute(select(Settings).limit(1))
+            return result.scalars().first()
 
     async def get_config(self):
         async for session in self.get_session():
-            return (await session.execute(select(Config).limit(1))).scalars().first()
+            result = await session.execute(select(Config).limit(1))
+            return result.scalars().first()
 
     async def get_stats(self):
         async for session in self.get_session():
-            return (await session.execute(select(Stats).limit(1))).scalars().first()
-
-    async def get_all_targets(self):
-        async for session in self.get_session():
-            return (await session.execute(select(Targets))).scalars().all()
-
-    async def count_leads_by_status(self, status: str):
-        async for session in self.get_session():
-            result = await session.execute(select(Leads).where(Leads.status == status))
-            return len(result.scalars().all())
+            result = await session.execute(select(Stats).limit(1))
+            return result.scalars().first()
 
     # Updaters
-    async def update_settings(self, data: dict):
+    async def update_engine_state(self, is_enabled=None, is_running=None):
         async for session in self.get_session():
-            await session.execute(update(Settings).values(**data))
-            await session.commit()
-
-    async def create_target(self, data: dict):
-        async for session in self.get_session():
-            target = Targets(**data)
-            session.add(target)
+            update_data = {}
+            if is_enabled is not None:
+                update_data['is_enabled'] = is_enabled
+            if is_running is not None:
+                update_data['is_running'] = is_running
+            await session.execute(update(EngineState).values(**update_data))
             await session.commit()
 
 # Global instance
