@@ -1,4 +1,3 @@
-# backend/database.py
 import asyncio
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select
 from sqlalchemy.ext.declarative import declarative_base
@@ -155,7 +154,7 @@ class Database:
             finally:
                 await session.close()
     
-    # Required getter methods
+    # === Getter Methods ===
     async def get_engine_state(self):
         async for session in self.get_session():
             result = await session.execute(select(EngineState).where(EngineState.id == 1))
@@ -175,6 +174,30 @@ class Database:
         async for session in self.get_session():
             result = await session.execute(select(Stats).where(Stats.id == 1))
             return result.scalars().first()
+    
+    async def get_target_by_indices(self, industry_idx: int, location_idx: int):
+        async for session in self.get_session():
+            result = await session.execute(select(Targets))
+            targets = result.scalars().all()
+            if not targets:
+                return None
+            
+            # Flatten logic similar to service
+            flat_targets = []
+            for target in targets:
+                flat_targets.append(target)
+                if target.state:
+                    flat_targets.append(target)
+            
+            pos = (industry_idx * 2) + location_idx
+            if pos < len(flat_targets):
+                return flat_targets[pos]
+            return flat_targets[0] if flat_targets else None
+    
+    async def get_all_targets(self):
+        async for session in self.get_session():
+            result = await session.execute(select(Targets))
+            return result.scalars().all()
     
     async def test_connection(self):
         try:
