@@ -18,6 +18,7 @@ async def stats_page(request: Request):
     scraped = await database.count_leads_by_status("SCRAPED")
     audited = await database.count_leads_by_status("AUDITED")
     emailed = await database.count_leads_by_status("EMAILED")
+    
     return templates.TemplateResponse("stats.html", {
         "request": request,
         "stats": stats,
@@ -25,7 +26,12 @@ async def stats_page(request: Request):
         "config": config,
         "scraped_count": scraped,
         "audited_count": audited,
-        "emailed_count": emailed
+        "emailed_count": emailed,
+        "daily_email_limit": settings.daily_email_limit,
+        "remaining_inventory": max(0, audited),
+        "emails_remaining_quota": max(0, settings.daily_email_limit - stats.emails_sent_today),
+        "current_target": None,
+        "last_emailed_lead_id": config.last_emailed_lead_id
     })
 
 @router.get("/stats/api")
