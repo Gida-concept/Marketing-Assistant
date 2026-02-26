@@ -1,16 +1,15 @@
-import logging
+# backend/scheduler.py
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from datetime import datetime
 import pytz
+import logging
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class Scheduler:
     def __init__(self):
         self.scheduler = AsyncIOScheduler()
-        self.timezone = pytz.timezone('UTC')
+        self.timezone = pytz.UTC
 
     async def start(self):
         if not self.scheduler.running:
@@ -21,18 +20,18 @@ class Scheduler:
                 replace_existing=True
             )
             self.scheduler.start()
-            logger.info("Scheduler started")
+            logger.info("Scheduler started.")
 
     async def shutdown(self):
         if self.scheduler.running:
             self.scheduler.shutdown()
-            logger.info("Scheduler shut down")
+            logger.info("Scheduler shut down.")
 
     async def _scheduled_execution(self):
         try:
-            from backend.engine import engine
+            from .engine import engine
             await engine.run()
         except Exception as e:
-            logger.error(f"Job failed: {e}")
+            logger.error(f"Job execution failed: {e}")
 
 scheduler = Scheduler()
