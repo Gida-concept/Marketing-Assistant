@@ -1,8 +1,13 @@
-# backend/routers/settings_router.py
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy import update
+
+# Local imports
 from ..database import database, Settings
+
+# Template setup
+templates = Jinja2Templates(directory="backend/templates")
 
 router = APIRouter(tags=["settings"])
 
@@ -13,7 +18,8 @@ async def settings_page(request: Request):
 
 @router.get("/settings/api")
 async def get_settings_api():
-    return await database.get_settings()
+    settings = await database.get_settings()
+    return settings
 
 @router.post("/settings/api")
 async def update_settings_api(
@@ -33,24 +39,26 @@ async def update_settings_api(
     inventory_threshold: int = Form(None)
 ):
     update_data = {}
-    fields = ['serp_api_key', 'groq_api_key', 'smtp_host', 'smtp_port',
-              'smtp_username', 'smtp_password', 'smtp_encryption',
-              'from_name', 'from_email', 'telegram_bot_token',
-              'telegram_chat_id', 'daily_email_limit',
-              'daily_serp_limit', 'inventory_threshold']
+    fields = [
+        'serp_api_key', 'groq_api_key', 'smtp_host', 'smtp_port',
+        'smtp_username', 'smtp_password', 'smtp_encryption',
+        'from_name', 'from_email', 'telegram_bot_token',
+        'telegram_chat_id', 'daily_email_limit',
+        'daily_serp_limit', 'inventory_threshold'
+    ]
     for field in fields:
         value = locals().get(field)
         if value is not None:
             update_data[field] = value
-    
+
     if 'smtp_encryption' in update_data:
         if update_data['smtp_encryption'] not in ['SSL', 'TLS', 'NONE']:
             return JSONResponse(status_code=400, content={"detail": "Invalid SMTP encryption"})
-    
+
     async for session in database.get_session():
         await session.execute(update(Settings).where(Settings.id == 1).values(**update_data))
         await session.commit()
-    
+
     return JSONResponse({"success": True, "message": "Settings updated"})
 
 @router.get("/settings/test/telegram")
