@@ -1,5 +1,5 @@
 # backend/database.py
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select, update
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select, update, delete
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -84,29 +84,11 @@ class Database:
 
     async def init_default_records(self):
         async for session in self.get_session():
-            # Settings
-            result = await session.execute(select(Settings))
-            if not result.scalars().first():
-                session.add(Settings())
-                await session.commit()
-
-            # EngineState
-            result = await session.execute(select(EngineState))
-            if not result.scalars().first():
-                session.add(EngineState())
-                await session.commit()
-
-            # Config
-            result = await session.execute(select(Config))
-            if not result.scalars().first():
-                session.add(Config())
-                await session.commit()
-
-            # Stats
-            result = await session.execute(select(Stats))
-            if not result.scalars().first():
-                session.add(Stats())
-                await session.commit()
+            for Model in [Settings, EngineState, Config, Stats]:
+                result = await session.execute(select(Model))
+                if not result.scalars().first():
+                    session.add(Model())
+                    await session.commit()
 
     async def get_session(self):
         async with self.async_session() as session:
@@ -118,37 +100,51 @@ class Database:
             finally:
                 await session.close()
 
-    # Getters
-    async def get_engine_state(self):
-        async for session in self.get_session():
-            result = await session.execute(select(EngineState).limit(1))
-            return result.scalars().first()
-
     async def get_settings(self):
         async for session in self.get_session():
-            result = await session.execute(select(Settings).limit(1))
-            return result.scalars().first()
+            return (await session.execute(select(Settings).limit(1))).scalars().first()
+
+    async def get_engine_state(self):
+        async for session in self.get_session():
+            return (await session.execute(select(EngineState).limit(1))).scalars().first()
 
     async def get_config(self):
         async for session in self.get_session():
-            result = await session.execute(select(Config).limit(1))
-            return result.scalars().first()
+            return (await session.execute(select(Config).limit(1))).scalars().first()
 
     async def get_stats(self):
         async for session in self.get_session():
-            result = await session.execute(select(Stats).limit(1))
-            return result.scalars().first()
+            return (await session.execute(select(Stats).limit(1))).scalars().first()
 
-    # Updaters
+    async def get_all_targets(self):
+        async for session in self.get_session():
+            return (await session.execute(select(Targets))).scalars().all()
+
+    async def get_all_leads(self):
+        async for session in self.get_session():
+            return (await session.execute(select(Leads).order_by(Leads.id.desc()))).scalars().all()
+
+    async def count_leads_by_status(self, status: str):
+        async for session in self.get_session():
+            result = await session.execute(select(Leads).where(Leads.status == status))
+            return len(result.scalars().all())
+
     async def update_engine_state(self, is_enabled=None, is_running=None):
         async for session in self.get_session():
-            update_data = {}
-            if is_enabled is not None:
-                update_data['is_enabled'] = is_enabled
-            if is_running is not None:
-                update_data['is_running'] = is_running
-            await session.execute(update(EngineState).values(**update_data))
+            data = {}
+            if is_enabled is not None: data['is_enabled'] = is_enabled
+            if is_running is not None: data['is_running'] = is_running
+            await session.execute(update(EngineState).where(EngineState.id == 1).values(**data))
             await session.commit()
 
-# Global instance
+    async def create_target(self, data: dict):
+        async for session in self.get_session():
+            session.add(Targets(**data))
+            await session.commit()
+
+    async def delete_target(self, target_id: int):
+        async for session in self.get_session():
+            await session.execute(delete(Targets).where(Targets.id == target_id))
+            await session.commit()
+
 database = Database()
