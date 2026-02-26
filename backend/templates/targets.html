@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agency Engine - Targets</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 Agency Engine</h1>
+            <nav>
+                <a href="/">Dashboard</a>
+                <a href="/settings">Settings</a>
+                <a href="/targets">Targets</a>
+                <a href="/campaign">Campaign</a>
+                <a href="/leads">Leads</a>
+                <a href="/stats">Stats</a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="targets-section">
+                <h2>🎯 Target Management</h2>
+
+                <!-- Add New Target Form -->
+                <form id="add-target-form">
+                    <div class="form-group">
+                        <h3>Add New Target</h3>
+                        <div class="row">
+                            <div class="col">
+                                <label for="industry">Industry:</label>
+                                <input type="text"
+                                       id="industry"
+                                       name="industry"
+                                       required
+                                       placeholder="e.g., Web Development">
+                            </div>
+                            <div class="col">
+                                <label for="country">Country:</label>
+                                <input type="text"
+                                       id="country"
+                                       name="country"
+                                       required
+                                       placeholder="e.g., United States">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col">
+                                <label for="state">State/Province (Optional):</label>
+                                <input type="text"
+                                       id="state"
+                                       name="state"
+                                       placeholder="e.g., California">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">➕ Add Target</button>
+                    </div>
+                </form>
+
+                <!-- Targets List -->
+                <div class="data-table-container">
+                    <h3>Current Targets</h3>
+                    <table id="targets-table" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Industry</th>
+                                <th>Country</th>
+                                <th>State/Province</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for target in targets %}
+                            <tr data-id="{{ target.id }}">
+                                <td>{{ target.industry }}</td>
+                                <td>{{ target.country }}</td>
+                                <td>{{ target.state or '-' }}</td>
+                                <td>
+                                    <button class="btn btn-danger btn-small delete-target"
+                                            data-id="{{ target.id }}"
+                                            title="Delete target">
+                                        🗑️
+                                    </button>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="no-data">No targets configured yet</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Agency Engine • <span id="current-time"></span></p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

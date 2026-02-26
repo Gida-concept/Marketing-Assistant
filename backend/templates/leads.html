@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agency Engine - Leads</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 Agency Engine</h1>
+            <nav>
+                <a href="/">Dashboard</a>
+                <a href="/settings">Settings</a>
+                <a href="/targets">Targets</a>
+                <a href="/campaign">Campaign</a>
+                <a href="/leads">Leads</a>
+                <a href="/stats">Stats</a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="leads-section">
+                <h2>👥 Lead Management</h2>
+
+                <!-- Filters -->
+                <div class="filters">
+                    <div class="filter-group">
+                        <label for="status-filter">Status:</label>
+                        <select id="status-filter">
+                            <option value="">All</option>
+                            <option value="SCRAPED">Scraped</option>
+                            <option value="AUDITED">Audited</option>
+                            <option value="EMAILED">Emailed</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="industry-filter">Industry:</label>
+                        <input type="text" id="industry-filter" placeholder="Filter by industry...">
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="country-filter">Country:</label>
+                        <input type="text" id="country-filter" placeholder="Filter by country...">
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="priority-filter">Min Priority:</label>
+                        <input type="number" id="priority-filter" min="0" max="10" placeholder="0">
+                    </div>
+                </div>
+
+                <!-- Leads Table -->
+                <div class="data-table-container">
+                    <table id="leads-table" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Business Name</th>
+                                <th>Industry</th>
+                                <th>Country</th>
+                                <th>State</th>
+                                <th>Website</th>
+                                <th>Email</th>
+                                <th>Status</th>
+                                <th>Priority</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for lead in leads %}
+                            <tr data-id="{{ lead.id }}" class="status-{{ lead.status|lower }}">
+                                <td>{{ lead.id }}</td>
+                                <td>{{ lead.business_name }}</td>
+                                <td>{{ lead.industry }}</td>
+                                <td>{{ lead.country }}</td>
+                                <td>{{ lead.state or '' }}</td>
+                                <td>
+                                    {% if lead.website %}
+                                    <a href="{{ lead.website }}" target="_blank" title="Visit website">🌐</a>
+                                    {% endif %}
+                                </td>
+                                <td>{{ lead.email or '' }}</td>
+                                <td><span class="status-badge status-{{ lead.status|lower }}">{{ lead.status }}</span></td>
+                                <td>{{ lead.priority_score }}</td>
+                                <td>{{ lead.created_at.strftime('%Y-%m-%d') }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="10" class="no-data">No leads found</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Agency Engine • <span id="current-time"></span></p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agency Engine - Campaign</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 Agency Engine</h1>
+            <nav>
+                <a href="/">Dashboard</a>
+                <a href="/settings">Settings</a>
+                <a href="/targets">Targets</a>
+                <a href="/campaign">Campaign</a>
+                <a href="/leads">Leads</a>
+                <a href="/stats">Stats</a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="campaign-section">
+                <h2>🚀 Campaign Control</h2>
+
+                <div class="status-grid">
+                    <div class="status-card">
+                        <h3>Engine Enabled</h3>
+                        <p class="status {{ 'active' if engine_state.is_enabled else 'inactive' }}">
+                            {{ '🟢 Yes' if engine_state.is_enabled else '🔴 No' }}
+                        </p>
+                    </div>
+
+                    <div class="status-card">
+                        <h3>Currently Running</h3>
+                        <p class="status {{ 'active' if engine_state.is_running else 'inactive' }}">
+                            {{ '🟢 Yes' if engine_state.is_running else '🔴 No' }}
+                        </p>
+                    </div>
+
+                    <div class="status-card">
+                        <h3>Last Run Date</h3>
+                        <p>{{ engine_state.last_run_date.strftime('%Y-%m-%d %H:%M:%S') if engine_state.last_run_date else 'Never' }}</p>
+                    </div>
+
+                    <div class="status-card">
+                        <h3>Last Emailed Lead ID</h3>
+                        <p>#{{ config.last_emailed_lead_id }}</p>
+                    </div>
+                </div>
+
+                <!-- Engine Control -->
+                <div class="control-panel">
+                    <h3>🎛️ Engine Control</h3>
+                    <form id="engine-control-form">
+                        {% if not engine_state.is_enabled %}
+                        <button type="submit" name="action" value="start" class="btn btn-success btn-large">
+                            ▶️ Start Engine
+                        </button>
+                        {% else %}
+                        <button type="submit" name="action" value="stop" class="btn btn-danger btn-large">
+                            ⏹️ Stop Engine
+                        </button>
+                        {% endif %}
+                    </form>
+
+                    <button id="manual-run" class="btn btn-warning btn-large">
+                        🔄 Run Now (Manual)
+                    </button>
+                </div>
+
+                <!-- Current Target -->
+                <div class="current-target">
+                    <h3>🎯 Current Target</h3>
+                    {% if current_target %}
+                    <p><strong>{{ current_target.industry }}</strong> in <strong>{{ current_target.country }}{% if current_target.state %}, {{ current_target.state }}{% endif %}</strong></p>
+                    {% else %}
+                    <p>No targets configured. Please add targets in the Targets section.</p>
+                    {% endif %}
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Agency Engine • <span id="current-time"></span></p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

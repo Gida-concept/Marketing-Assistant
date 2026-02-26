@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agency Engine - Statistics</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 Agency Engine</h1>
+            <nav>
+                <a href="/">Dashboard</a>
+                <a href="/settings">Settings</a>
+                <a href="/targets">Targets</a>
+                <a href="/campaign">Campaign</a>
+                <a href="/leads">Leads</a>
+                <a href="/stats">Stats</a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="stats-section">
+                <h2>📊 Performance Statistics</h2>
+
+                <div class="stats-grid">
+                    <!-- Daily Metrics -->
+                    <div class="stats-card">
+                        <h3>📬 Today's Outreach</h3>
+                        <div class="stat-item">
+                            <span class="label">Emails Sent:</span>
+                            <span class="value">{{ stats.emails_sent_today }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Daily Limit:</span>
+                            <span class="value">{{ daily_email_limit }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Remaining Quota:</span>
+                            <span class="value success">{{ emails_remaining_quota }}</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress" style="width: {{ (stats.emails_sent_today / daily_email_limit * 100) if daily_email_limit > 0 else 0 }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Lead Inventory -->
+                    <div class="stats-card">
+                        <h3>📦 Lead Inventory</h3>
+                        <div class="stat-item">
+                            <span class="label">Scraped:</span>
+                            <span class="value">{{ scraped_count }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Audited:</span>
+                            <span class="value">{{ audited_count }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Emailed:</span>
+                            <span class="value">{{ emailed_count }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Total Leads:</span>
+                            <span class="value strong">{{ scraped_count + audited_count + emailed_count }}</span>
+                        </div>
+                    </div>
+
+                    <!-- System Limits -->
+                    <div class="stats-card">
+                        <h3>⚙️ System Configuration</h3>
+                        <div class="stat-item">
+                            <span class="label">Daily SERP Limit:</span>
+                            <span class="value">{{ settings.daily_serp_limit }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Inventory Threshold:</span>
+                            <span class="value">{{ settings.inventory_threshold }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Remaining Inventory:</span>
+                            <span class="value {% if remaining_inventory < settings.inventory_threshold %}warning{% else %}success{% endif %}">
+                                {{ remaining_inventory }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Current Target -->
+                    <div class="stats-card">
+                        <h3>🎯 Current Target</h3>
+                        {% if current_target %}
+                        <div class="target-info">
+                            <p><strong>{{ current_target.industry }}</strong></p>
+                            <p>{{ current_target.country }}{% if current_target.state %}, {{ current_target.state }}{% endif %}</p>
+                        </div>
+                        {% else %}
+                        <p class="no-data">No targets configured</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Agency Engine • <span id="current-time"></span></p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

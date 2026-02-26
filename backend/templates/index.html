@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agency Engine - Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 Agency Engine</h1>
+            <nav>
+                <a href="/">Dashboard</a>
+                <a href="/settings">Settings</a>
+                <a href="/targets">Targets</a>
+                <a href="/campaign">Campaign</a>
+                <a href="/leads">Leads</a>
+                <a href="/stats">Stats</a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="dashboard-overview">
+                <h2>📊 Campaign Overview</h2>
+                <div class="status-grid">
+                    <div class="status-card">
+                        <h3>Engine Status</h3>
+                        <p class="status {{ 'active' if engine_state.is_enabled else 'inactive' }}">
+                            {{ '🟢 Active' if engine_state.is_enabled else '🔴 Inactive' }}
+                        </p>
+                        <p class="small">Running: {{ 'Yes' if engine_state.is_running else 'No' }}</p>
+                    </div>
+
+                    <div class="status-card">
+                        <h3>Last Execution</h3>
+                        <p>{{ engine_state.last_run_date.strftime('%Y-%m-%d %H:%M:%S') if engine_state.last_run_date else 'Never' }}</p>
+                    </div>
+
+                    <div class="status-card">
+                        <h3>Daily Emails</h3>
+                        <p>{{ stats.emails_sent_today }} / {{ settings.daily_email_limit }}</p>
+                        <div class="progress-bar">
+                            <div class="progress" style="width: {{ (stats.emails_sent_today / settings.daily_email_limit * 100) if settings.daily_email_limit > 0 else 0 }}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="status-card">
+                        <h3>Current Target</h3>
+                        {% if current_target %}
+                            <p>{{ current_target.industry }}</p>
+                            <p class="small">{{ current_target.country }}{% if current_target.state %}, {{ current_target.state }}{% endif %}</p>
+                        {% else %}
+                            <p>No targets configured</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+
+            <section class="quick-actions">
+                <h2>⚡ Quick Actions</h2>
+                <form action="/engine/control" method="post" class="action-buttons">
+                    {% if not engine_state.is_enabled %}
+                        <button type="submit" name="action" value="start" class="btn btn-success">▶️ Start Engine</button>
+                    {% else %}
+                        <button type="submit" name="action" value="stop" class="btn btn-danger">⏹️ Stop Engine</button>
+                    {% endif %}
+                </form>
+            </section>
+        </main>
+
+        <footer>
+            <p>Agency Engine • <span id="current-time"></span></p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
