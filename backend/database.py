@@ -1,5 +1,5 @@
 import asyncio
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select, update
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
@@ -13,33 +13,24 @@ Base = declarative_base()
 
 class Settings(Base):
     __tablename__ = 'settings'
-    
     id = Column(Integer, primary_key=True)
     serp_api_key = Column(String(255), nullable=True)
     groq_api_key = Column(String(255), nullable=True)
-    
-    # SMTP Configuration
     smtp_host = Column(String(255), nullable=True)
     smtp_port = Column(Integer, default=587)
     smtp_username = Column(String(255), nullable=True)
     smtp_password = Column(String(255), nullable=True)
-    smtp_encryption = Column(String(10), default='TLS')  # SSL, TLS, NONE
-    
+    smtp_encryption = Column(String(10), default='TLS')
     from_name = Column(String(255), nullable=True)
     from_email = Column(String(255), nullable=True)
-    
-    # Telegram Configuration
     telegram_bot_token = Column(String(255), nullable=True)
     telegram_chat_id = Column(String(50), nullable=True)
-    
-    # System Limits
     daily_email_limit = Column(Integer, default=50)
     daily_serp_limit = Column(Integer, default=100)
     inventory_threshold = Column(Integer, default=200)
 
 class Targets(Base):
     __tablename__ = 'targets'
-    
     id = Column(Integer, primary_key=True)
     industry = Column(String(100), nullable=False)
     country = Column(String(100), nullable=False)
@@ -47,7 +38,6 @@ class Targets(Base):
 
 class Leads(Base):
     __tablename__ = 'leads'
-    
     id = Column(Integer, primary_key=True)
     business_name = Column(String(255), nullable=False)
     industry = Column(String(100), nullable=False)
@@ -65,7 +55,6 @@ class Leads(Base):
 
 class Config(Base):
     __tablename__ = 'config'
-    
     id = Column(Integer, primary_key=True)
     industry_idx = Column(Integer, default=0)
     location_idx = Column(Integer, default=0)
@@ -75,7 +64,6 @@ class Config(Base):
 
 class EngineState(Base):
     __tablename__ = 'engine_state'
-    
     id = Column(Integer, primary_key=True)
     is_enabled = Column(Boolean, default=False)
     is_running = Column(Boolean, default=False)
@@ -83,7 +71,6 @@ class EngineState(Base):
 
 class Stats(Base):
     __tablename__ = 'stats'
-    
     id = Column(Integer, primary_key=True)
     emails_sent_today = Column(Integer, default=0)
     last_email_date = Column(DateTime, nullable=True)
@@ -91,59 +78,39 @@ class Stats(Base):
 class Database:
     def __init__(self):
         self.engine = create_async_engine(DATABASE_URL, echo=False, connect_args={"check_same_thread": False})
-        self.async_session = sessionmaker(
-            self.engine, class_=AsyncSession, expire_on_commit=False
-        )
-    
+        self.async_session = sessionmaker(self.engine, class_=AsyncSession, expire_on_commit=False)
+
     async def init_db(self):
-        """Initialize database and create tables if they don't exist"""
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        
-        # Initialize default settings if not exists
-        await self.init_default_settings()
-    
-    async def init_default_settings(self):
-        """Initialize default settings record"""
-        async with self.async_session() as session:
+        await self.init_default_records()
+
+    async def init_default_records(self):
+        async for session in self.get_session():
+            # Settings
             result = await session.execute(select(Settings))
-            settings = result.scalars().first()
-            
-            if not settings:
-                default_settings = Settings(
-                    smtp_port=587,
-                    smtp_encryption='TLS',
-                    daily_email_limit=50,
-                    daily_serp_limit=100,
-                    inventory_threshold=200
-                )
-                session.add(default_settings)
+            if not result.scalars().first():
+                session.add(Settings())
                 await session.commit()
-            
+
+            # EngineState
             result = await session.execute(select(EngineState))
-            engine_state = result.scalars().first()
-            if not engine_state:
-                default_engine_state = EngineState(is_enabled=False, is_running=False)
-                session.add(default_engine_state)
+            if not result.scalars().first():
+                session.add(EngineState())
                 await session.commit()
-            
+
+            # Config
             result = await session.execute(select(Config))
-            config = result.scalars().first()
-            if not config:
-                default_config = Config(
-                    industry_idx=0, location_idx=0, state_idx=0,
-                    pagination_start=0, last_emailed_lead_id=0
-                )
-                session.add(default_config)
+            if not result.scalars().first():
+                session.add(Config())
                 await session.commit()
-            
+
+            # Stats
             result = await session.execute(select(Stats))
-            stats = result.scalars().first()
-            if not stats:
-                default_stats = Stats(emails_sent_today=0)
-                session.add(default_stats)
+            if not result.scalars().first():
+                session.add(Stats())
                 await session.commit()
-    
+
     async def get_session(self):
         async with self.async_session() as session:
             try:
@@ -153,59 +120,44 @@ class Database:
                 raise e
             finally:
                 await session.close()
-    
-    # === Getter Methods ===
-    async def get_engine_state(self):
-        async for session in self.get_session():
-            result = await session.execute(select(EngineState).where(EngineState.id == 1))
-            return result.scalars().first()
-    
+
+    # Getters
     async def get_settings(self):
         async for session in self.get_session():
-            result = await session.execute(select(Settings).where(Settings.id == 1))
-            return result.scalars().first()
-    
+            return (await session.execute(select(Settings).limit(1))).scalars().first()
+
+    async def get_engine_state(self):
+        async for session in self.get_session():
+            return (await session.execute(select(EngineState).limit(1))).scalars().first()
+
     async def get_config(self):
         async for session in self.get_session():
-            result = await session.execute(select(Config).where(Config.id == 1))
-            return result.scalars().first()
-    
+            return (await session.execute(select(Config).limit(1))).scalars().first()
+
     async def get_stats(self):
         async for session in self.get_session():
-            result = await session.execute(select(Stats).where(Stats.id == 1))
-            return result.scalars().first()
-    
-    async def get_target_by_indices(self, industry_idx: int, location_idx: int):
-        async for session in self.get_session():
-            result = await session.execute(select(Targets))
-            targets = result.scalars().all()
-            if not targets:
-                return None
-            
-            # Flatten logic similar to service
-            flat_targets = []
-            for target in targets:
-                flat_targets.append(target)
-                if target.state:
-                    flat_targets.append(target)
-            
-            pos = (industry_idx * 2) + location_idx
-            if pos < len(flat_targets):
-                return flat_targets[pos]
-            return flat_targets[0] if flat_targets else None
-    
+            return (await session.execute(select(Stats).limit(1))).scalars().first()
+
     async def get_all_targets(self):
         async for session in self.get_session():
-            result = await session.execute(select(Targets))
-            return result.scalars().all()
-    
-    async def test_connection(self):
-        try:
-            async for session in self.get_session():
-                await session.execute(select(1))
-                return True
-        except Exception:
-            return False
+            return (await session.execute(select(Targets))).scalars().all()
 
-# Global database instance
+    async def count_leads_by_status(self, status: str):
+        async for session in self.get_session():
+            result = await session.execute(select(Leads).where(Leads.status == status))
+            return len(result.scalars().all())
+
+    # Updaters
+    async def update_settings(self, data: dict):
+        async for session in self.get_session():
+            await session.execute(update(Settings).values(**data))
+            await session.commit()
+
+    async def create_target(self, data: dict):
+        async for session in self.get_session():
+            target = Targets(**data)
+            session.add(target)
+            await session.commit()
+
+# Global instance
 database = Database()
