@@ -154,6 +154,35 @@ class Database:
                 raise e
             finally:
                 await session.close()
+    
+    # Required getter methods
+    async def get_engine_state(self):
+        async for session in self.get_session():
+            result = await session.execute(select(EngineState).where(EngineState.id == 1))
+            return result.scalars().first()
+    
+    async def get_settings(self):
+        async for session in self.get_session():
+            result = await session.execute(select(Settings).where(Settings.id == 1))
+            return result.scalars().first()
+    
+    async def get_config(self):
+        async for session in self.get_session():
+            result = await session.execute(select(Config).where(Config.id == 1))
+            return result.scalars().first()
+    
+    async def get_stats(self):
+        async for session in self.get_session():
+            result = await session.execute(select(Stats).where(Stats.id == 1))
+            return result.scalars().first()
+    
+    async def test_connection(self):
+        try:
+            async for session in self.get_session():
+                await session.execute(select(1))
+                return True
+        except Exception:
+            return False
 
 # Global database instance
 database = Database()
