@@ -15,22 +15,28 @@ document.addEventListener('DOMContentLoaded', function() {
     setupTestButtons();
     setupFilters();
 
+    // Load targets on page load
+    loadTargets();
+
     // Check for flash messages
     checkFlashMessages();
 });
 
 function updateTime() {
     const now = new Date();
-    const options = {
-        year: 'numeric',
-        month: '2-digit',
+    const options = { 
+        year: 'numeric', 
+        month: '2-digit', 
         day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
+        hour: '2-digit', 
+        minute: '2-digit', 
         second: '2-digit',
         timeZoneName: 'short'
     };
-    document.getElementById('current-time').textContent = now.toLocaleDateString(undefined, options);
+    const timeEl = document.getElementById('current-time');
+    if (timeEl) {
+        timeEl.textContent = now.toLocaleDateString(undefined, options);
+    }
 }
 
 function showNotification(message, type = 'info') {
@@ -53,9 +59,9 @@ function showNotification(message, type = 'info') {
         max-width: 300px;
     `;
     notification.textContent = message;
-
+    
     document.body.appendChild(notification);
-
+    
     // Auto-remove after 5 seconds
     setTimeout(() => {
         if (notification.parentNode) {
@@ -75,11 +81,11 @@ async function apiRequest(url, options = {}) {
         });
 
         const data = await response.json();
-
+        
         if (!response.ok) {
             throw new Error(data.detail || 'API request failed');
         }
-
+        
         return { success: true, data };
     } catch (error) {
         console.error('API Request Error:', error);
@@ -94,7 +100,7 @@ function setupSettingsForm() {
 
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
-
+        
         const formData = new FormData(form);
         const data = {};
         for (let [key, value] of formData.entries()) {
@@ -103,7 +109,7 @@ function setupSettingsForm() {
 
         const result = await apiRequest('/settings/api', {
             method: 'POST',
-            body: JSON.stringify(data)
+            body: new URLSearchParams(formData)
         });
 
         if (result.success) {
@@ -121,7 +127,7 @@ function setupTargetForm() {
 
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
-
+        
         const industry = document.getElementById('industry').value.trim();
         const country = document.getElementById('country').value.trim();
         const state = document.getElementById('state').value.trim() || null;
@@ -131,9 +137,14 @@ function setupTargetForm() {
             return;
         }
 
+        const formData = new FormData();
+        formData.append('industry', industry);
+        formData.append('country', country);
+        if (state) formData.append('state', state);
+
         const result = await apiRequest('/targets/api', {
             method: 'POST',
-            body: JSON.stringify({ industry, country, state })
+            body: formData
         });
 
         if (result.success) {
@@ -146,7 +157,7 @@ function setupTargetForm() {
         }
     });
 
-    // Delete target buttons
+    // Delete target buttons (event delegation)
     document.addEventListener('click', async function(e) {
         if (e.target.classList.contains('delete-target')) {
             if (!confirm('Are you sure you want to delete this target?')) {
@@ -163,11 +174,53 @@ function setupTargetForm() {
                 // Remove row from table
                 const row = e.target.closest('tr');
                 if (row) row.remove();
+                // Refresh table
+                loadTargets();
             } else {
                 showNotification(`Failed to delete target: ${result.error}`, 'error');
             }
         }
     });
+}
+
+// Load Targets Function
+async function loadTargets() {
+    const tbody = document.querySelector('#targets-table tbody');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/targets/api');
+        const data = await response.json();
+        
+        // Clear existing rows
+        tbody.innerHTML = '';
+        
+        if (!data.targets || data.targets.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="no-data">No targets configured yet</td></tr>';
+            return;
+        }
+        
+        data.targets.forEach(target => {
+            const row = document.createElement('tr');
+            row.setAttribute('data-id', target.id);
+            row.innerHTML = `
+                <td>${target.industry}</td>
+                <td>${target.country}</td>
+                <td>${target.state || '-'}</td>
+                <td>
+                    <button class="btn btn-danger btn-small delete-target" 
+                            data-id="${target.id}"
+                            title="Delete target">
+                        🗑️
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    } catch (error) {
+        console.error('Failed to load targets:', error);
+        tbody.innerHTML = '<tr><td colspan="4" class="no-data">Failed to load targets</td></tr>';
+    }
 }
 
 // Engine Control
@@ -177,18 +230,20 @@ function setupEngineControl() {
 
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
-
+        
         const action = e.submitter.value;
-
+        const formData = new FormData();
+        formData.append('action', action);
+        
         const result = await apiRequest('/campaign/api/control', {
             method: 'POST',
-            body: JSON.stringify({ action })
+            body: formData
         });
 
         if (result.success) {
             showNotification(`Engine ${action === 'start' ? 'started' : 'stopped'} successfully!`, 'success');
             // Reload page to update state
-            location.reload();
+            setTimeout(() => location.reload(), 1000);
         } else {
             showNotification(`Failed to control engine: ${result.error}`, 'error');
         }
@@ -227,7 +282,7 @@ function setupTestButtons() {
     if (testSmtp) {
         testSmtp.addEventListener('click', async function() {
             const result = await apiRequest('/settings/test/smtp');
-
+            
             if (result.success) {
                 showNotification('SMTP test successful! Check your inbox.', 'success');
             } else {
@@ -239,7 +294,7 @@ function setupTestButtons() {
     if (testTelegram) {
         testTelegram.addEventListener('click', async function() {
             const result = await apiRequest('/settings/test/telegram');
-
+            
             if (result.success) {
                 showNotification('Telegram test message sent!', 'success');
             } else {
@@ -252,14 +307,14 @@ function setupTestButtons() {
 // Filters
 function setupFilters() {
     const filters = ['status-filter', 'industry-filter', 'country-filter', 'priority-filter'];
-
+    
     filters.forEach(filterId => {
         const filter = document.getElementById(filterId);
         if (!filter) return;
 
         filter.addEventListener('input', debounce(applyFilters, 300));
     });
-});
+}
 
 function applyFilters() {
     const status = document.getElementById('status-filter')?.value?.toLowerCase() || '';
@@ -268,20 +323,20 @@ function applyFilters() {
     const priority = parseInt(document.getElementById('priority-filter')?.value) || 0;
 
     const rows = document.querySelectorAll('#leads-table tbody tr');
-
+    
     rows.forEach(row => {
         if (!row.dataset.id) return; // Skip template rows
-
-        const rowStatus = row.querySelector('td:nth-child(8)').textContent.toLowerCase();
-        const rowIndustry = row.querySelector('td:nth-child(3)').textContent.toLowerCase();
-        const rowCountry = row.querySelector('td:nth-child(4)').textContent.toLowerCase();
-        const rowPriority = parseInt(row.querySelector('td:nth-child(9)').textContent) || 0;
-
+        
+        const rowStatus = row.querySelector('td:nth-child(8)')?.textContent.toLowerCase() || '';
+        const rowIndustry = row.querySelector('td:nth-child(3)')?.textContent.toLowerCase() || '';
+        const rowCountry = row.querySelector('td:nth-child(4)')?.textContent.toLowerCase() || '';
+        const rowPriority = parseInt(row.querySelector('td:nth-child(9)')?.textContent) || 0;
+        
         const matchesStatus = !status || rowStatus.includes(status);
         const matchesIndustry = !industry || rowIndustry.includes(industry);
         const matchesCountry = !country || rowCountry.includes(country);
         const matchesPriority = rowPriority >= priority;
-
+        
         row.style.display = matchesStatus && matchesIndustry && matchesCountry && matchesPriority ? '' : 'none';
     });
 }
@@ -299,57 +354,15 @@ function debounce(func, wait) {
     };
 }
 
-// Load targets
-async function loadTargets() {
-    const result = await apiRequest('/targets/api');
-    if (result.success) {
-        const tbody = document.querySelector('#targets-table tbody');
-        if (tbody) {
-            // Clear existing rows except no-data
-            const existingRows = tbody.querySelectorAll('tr[data-id]');
-            existingRows.forEach(row => row.remove());
-
-            if (result.data.targets.length === 0) {
-                // Show no-data row
-                const noDataRow = tbody.querySelector('.no-data');
-                if (noDataRow) noDataRow.parentElement.style.display = '';
-            } else {
-                // Hide no-data row
-                const noDataRow = tbody.querySelector('.no-data');
-                if (noDataRow) noDataRow.parentElement.style.display = 'none';
-
-                // Add new rows
-                result.data.targets.forEach(target => {
-                    const row = document.createElement('tr');
-                    row.setAttribute('data-id', target.id);
-                    row.innerHTML = `
-                        <td>${target.industry}</td>
-                        <td>${target.country}</td>
-                        <td>${target.state || '-'}</td>
-                        <td>
-                            <button class="btn btn-danger btn-small delete-target"
-                                    data-id="${target.id}"
-                                    title="Delete target">
-                                🗑️
-                            </button>
-                        </td>
-                    `;
-                    tbody.appendChild(row);
-                });
-            }
-        }
-    }
-}
-
 // Flash messages
 function checkFlashMessages() {
     const urlParams = new URLSearchParams(window.location.search);
     const msg = urlParams.get('msg');
     const type = urlParams.get('type') || 'info';
-
+    
     if (msg) {
         showNotification(decodeURIComponent(msg), type);
-
+        
         // Remove params from URL without reloading
         const newUrl = new URL(window.location);
         newUrl.searchParams.delete('msg');
