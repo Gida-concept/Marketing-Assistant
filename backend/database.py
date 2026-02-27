@@ -1,3 +1,4 @@
+# backend/database.py
 import logging
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select, update, delete
 from sqlalchemy.ext.declarative import declarative_base
@@ -157,7 +158,8 @@ class Database:
             await session.execute(delete(Targets).where(Targets.id == target_id))
             await session.commit()
 
-    async def save_lead(self, data: dict):  # ✅ FIXED: Added parameter name 'data'
+    # Fixed: Added 'data' parameter name
+    async def save_lead(self, data: dict):
         async for session in self.get_session():
             lead = Leads(**data)
             session.add(lead)
