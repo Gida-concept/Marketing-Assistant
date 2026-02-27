@@ -77,8 +77,7 @@ class Engine:
             self.is_running = False
     
     async def scrape_leads(self, target, settings):
-        # ✅ FIX: Build location string WITHOUT hardcoded corrections
-        # Let SerpApi handle geocoding for 200+ countries natively
+        # Build location string
         location_parts = []
         if target.state and target.state.strip():
             location_parts.append(target.state.strip())
@@ -93,7 +92,7 @@ class Engine:
         logger.info(f"   Raw State: '{target.state or 'None'}'")
         logger.info(f"   Raw Country: '{target.country or 'None'}'")
         
-        # Build base params - NO location yet
+        # Build base params
         params = {
             "engine": "google_maps",
             "q": query,
@@ -108,8 +107,6 @@ class Engine:
         if location_query:
             params["location"] = location_query
         
-        data = None
-        
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 # First attempt with location parameter (if provided)
@@ -120,7 +117,6 @@ class Engine:
                     logger.info("✅ Location-based search successful")
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code == 400:
-                        # ✅ FIX: Fallback to broader search WITHOUT trying to "correct" location
                         logger.warning("⚠️ SerpApi returned 400 Bad Request (invalid/unrecognized location)")
                         logger.warning("   Attempting fallback with broader search (no location parameter)...")
                         
@@ -133,8 +129,8 @@ class Engine:
                     else:
                         raise
                 
-                # ✅ Now data is guaranteed to be defined
-                results = data.get("local_results", []) if data else []
+                # Now data is guaranteed to be defined
+                results = data.get("local_results", [])
                 logger.info(f"\n✅ STEP 2: Search Results")
                 logger.info(f"   Total businesses found: {len(results)}")
                 
@@ -143,6 +139,7 @@ class Engine:
                     return {"success": False, "message": "No businesses found for this target"}
                 
                 scraped = 0
+                # ✅ FIX: Loop through results with proper data scope
                 for idx, result in enumerate(results[:10], 1):
                     business_name = result.get("title", "").strip()
                     website = result.get("website", "").strip()
