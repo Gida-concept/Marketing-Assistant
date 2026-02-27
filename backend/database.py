@@ -166,4 +166,10 @@ class Database:
             await session.execute(update(Config).where(Config.id == 1).values(**kwargs))
             await session.commit()
 
+    async def get_target_by_indices(self, industry_idx: int, location_idx: int):
+        targets = await self.get_all_targets()
+        if not targets:
+            return None
+        return targets[industry_idx % len(targets)]
+
 database = Database()
