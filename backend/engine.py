@@ -16,22 +16,6 @@ class Engine:
             r'/blog/', r'/features/', r'/companies/', r'fashion-companies',
             r'wikipedia', r'crunchbase', r'glassdoor', r'yelp\.com'
         ]
-        # Common location typo corrections
-        self.location_corrections = {
-            "carlifonia": "California",
-            "califronia": "California",
-            "califonia": "California",
-            "newyork": "New York",
-            "new york city": "New York",
-            "ny": "New York",
-            "texas": "Texas",
-            "florida": "Florida",
-            "illinois": "Illinois",
-            "united states": "United States",
-            "usa": "United States",
-            "uk": "United Kingdom",
-            "great britain": "United Kingdom"
-        }
     
     async def run(self):
         if self.is_running:
@@ -93,45 +77,42 @@ class Engine:
             self.is_running = False
     
     async def scrape_leads(self, target, settings):
-        # Auto-correct location typos
-        state_raw = (target.state or "").strip()
-        country_raw = (target.country or "").strip()
-        
-        state_corrected = self._correct_location(state_raw)
-        country_corrected = self._correct_location(country_raw)
-        
+        # ✅ FIX: Build location string WITHOUT hardcoded corrections
+        # Let SerpApi handle geocoding for 200+ countries natively
         location_parts = []
-        if state_corrected:
-            location_parts.append(state_corrected)
-        if country_corrected:
-            location_parts.append(country_corrected)
-        location_query = ", ".join(location_parts) if location_parts else "United States"
+        if target.state and target.state.strip():
+            location_parts.append(target.state.strip())
+        if target.country and target.country.strip():
+            location_parts.append(target.country.strip())
+        location_query = ", ".join(location_parts) if location_parts else None
         
         query = f"{target.industry} company"
         logger.info(f"\n🔍 STEP 1: Google Maps Search")
         logger.info(f"   Query: '{query}'")
-        logger.info(f"   Location: '{location_query}'")
-        logger.info(f"   Raw State: '{state_raw}' → Corrected: '{state_corrected}'")
-        logger.info(f"   Raw Country: '{country_raw}' → Corrected: '{country_corrected}'")
+        logger.info(f"   Location: '{location_query or 'Global (no location filter)'}'")
+        logger.info(f"   Raw State: '{target.state or 'None'}'")
+        logger.info(f"   Raw Country: '{target.country or 'None'}'")
         
+        # Build base params - NO location yet
         params = {
             "engine": "google_maps",
             "q": query,
             "api_key": settings.serp_api_key,
             "type": "search",
-            "location": location_query,
             "google_domain": "google.com",
             "hl": "en",
             "gl": "us"
         }
         
+        # Only add location if we have one
+        if location_query:
+            params["location"] = location_query
+        
+        data = None
+        
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                # ✅ FIX: Proper variable scoping - define data AFTER successful request
-                serp_resp = None
-                data = None
-                
-                # First attempt with location parameter
+                # First attempt with location parameter (if provided)
                 try:
                     serp_resp = await client.get(self.serp_base_url, params=params)
                     serp_resp.raise_for_status()
@@ -139,19 +120,20 @@ class Engine:
                     logger.info("✅ Location-based search successful")
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code == 400:
-                        logger.warning("⚠️ SerpApi returned 400 Bad Request (invalid location)")
+                        # ✅ FIX: Fallback to broader search WITHOUT trying to "correct" location
+                        logger.warning("⚠️ SerpApi returned 400 Bad Request (invalid/unrecognized location)")
                         logger.warning("   Attempting fallback with broader search (no location parameter)...")
                         
-                        # Fallback: Remove location parameter
+                        # Remove location parameter for global/broader search
                         params.pop("location", None)
                         serp_resp = await client.get(self.serp_base_url, params=params)
                         serp_resp.raise_for_status()
                         data = serp_resp.json()
-                        logger.info("✅ Fallback search successful")
+                        logger.info("✅ Fallback search successful (global results)")
                     else:
                         raise
                 
-                # ✅ CRITICAL FIX: data is now guaranteed to be defined here
+                # ✅ Now data is guaranteed to be defined
                 results = data.get("local_results", []) if data else []
                 logger.info(f"\n✅ STEP 2: Search Results")
                 logger.info(f"   Total businesses found: {len(results)}")
@@ -180,8 +162,8 @@ class Engine:
                     lead_id = await database.save_lead({
                         "business_name": business_name[:250],
                         "industry": target.industry[:100],
-                        "country": country_corrected[:100],
-                        "state": state_corrected[:100],
+                        "country": target.country[:100],
+                        "state": (target.state or "")[:100],
                         "website": website[:255] if website else None,
                         "email": None,
                         "load_time": None,
@@ -269,26 +251,6 @@ class Engine:
             logger.error(f"❌ SerpApi error: {e}")
             return {"success": False, "message": f"SerpApi failed: {str(e)}"}
     
-    def _correct_location(self, location: str) -> str:
-        """Auto-correct common location typos"""
-        if not location:
-            return location
-        
-        location_lower = location.lower().strip()
-        
-        for typo, correction in self.location_corrections.items():
-            if location_lower == typo.lower():
-                logger.debug(f"   Auto-corrected location: '{location}' → '{correction}'")
-                return correction
-        
-        for typo, correction in self.location_corrections.items():
-            if typo.lower() in location_lower:
-                corrected = location.replace(typo, correction, 1)
-                logger.debug(f"   Auto-corrected location: '{location}' → '{corrected}'")
-                return corrected
-        
-        return location
-    
     def _should_skip_url(self, url, title):
         """Skip non-business URLs"""
         if not url:
@@ -297,15 +259,18 @@ class Engine:
         url_lower = url.lower()
         title_lower = title.lower() if title else ""
         
+        # Skip social media/profile sites
         social_domains = ['facebook.com', 'instagram.com', 'twitter.com', 'linkedin.com/in/', 'pinterest.com', 'wikipedia.org']
         for domain in social_domains:
             if domain in url_lower:
                 return True
         
+        # Skip directories/aggregators
         for pattern in self.skip_patterns:
             if re.search(pattern, url_lower) or re.search(pattern, title_lower):
                 return True
         
+        # Skip non-commercial TLDs in business context
         non_business_tlds = ['.edu', '.gov', '.org/wiki']
         for tld in non_business_tlds:
             if tld in url_lower:
