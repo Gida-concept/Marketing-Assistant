@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select, update, delete
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select, update, delete, insert
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -153,6 +153,17 @@ class Database:
     async def delete_target(self, target_id: int):
         async for session in self.get_session():
             await session.execute(delete(Targets).where(Targets.id == target_id))
+            await session.commit()
+
+    async def save_lead(self,  dict):
+        async for session in self.get_session():
+            lead = Leads(**data)
+            session.add(lead)
+            await session.commit()
+
+    async def update_config(self, **kwargs):
+        async for session in self.get_session():
+            await session.execute(update(Config).where(Config.id == 1).values(**kwargs))
             await session.commit()
 
 database = Database()
