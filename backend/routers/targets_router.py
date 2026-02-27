@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import delete
 
 # Local imports
-from ..database import database, Targets
+from ..database import database
 
 # Template setup
 templates = Jinja2Templates(directory="backend/templates")
@@ -33,11 +32,12 @@ async def add_target_api(
         if not country or not country.strip():
             return JSONResponse(status_code=400, content={"detail": "Country is required"})
         
-        await database.create_target({
-            "industry": industry.strip(),
-            "country": country.strip(),
-            "state": state.strip() if state and state.strip() else None
-        })
+        # Call with explicit parameters (no ambiguous 'data' dict)
+        await database.create_target(
+            industry=industry.strip(),
+            country=country.strip(),
+            state=state.strip() if state and state.strip() else None
+        )
         
         return JSONResponse({"success": True, "message": "Target added successfully"})
     except Exception as e:
