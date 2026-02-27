@@ -7,11 +7,12 @@ class Engine:
     def __init__(self):
         self.is_running = False
         self.serp_base_url = "https://serpapi.com/search"
-        # Patterns to skip directory/listing sites
+        # Skip patterns for non-business URLs
         self.skip_patterns = [
             r'builtin\.com', r'builtinsf\.com', r'thegoodtrade\.com',
-            r'toddshelton\.com', r'directory', r'listings?', r'blog\.about',
-            r'/blog/', r'/features/', r'/companies/.*type', r'fashion-companies'
+            r'toddshelton\.com', r'directory', r'listings?', r'blog',
+            r'/blog/', r'/features/', r'/companies/', r'fashion-companies',
+            r'wikipedia', r'linkedin\.com/company', r'crunchbase', r'glassdoor'
         ]
     
     async def run(self):
@@ -51,104 +52,129 @@ class Engine:
         
         except Exception as e:
             import traceback
-            logger.error(f"Engine crash: {e}\n{traceback.format_exc()}")
+            print(f"Engine crash: {e}\n{traceback.format_exc()}")
             return {"success": False, "message": f"Engine error: {str(e)}"}
         finally:
             self.is_running = False
     
     async def scrape_leads(self, target, settings):
-        query = f'"{target.industry}" company website "{target.country}"'
-        if target.state:
-            query += f' "{target.state}"'
+        # ✅ CORRECT: Use Google Maps engine for business listings
+        query = f"{target.industry} companies"
+        location = f"{target.state}, {target.country}" if target.state else target.country
         
         params = {
-            "engine": "google",
+            "engine": "google_maps",  # ← CRITICAL FIX: Use Google Maps engine
             "q": query,
             "api_key": settings.serp_api_key,
-            "num": 10,
-            "gl": "us",
-            "filter": "0"  # Disable Google's "similar results" filter
+            "type": "search",
+            "ll": "@37.7749,-122.4194,14z",  # Default to SF if no coords
+            "google_domain": "google.com",
+            "hl": "en",
+            "gl": "us"
         }
+        
+        # Add location-specific parameters
+        if "united states" in target.country.lower() or "usa" in target.country.lower():
+            if target.state:
+                params["q"] = f"{target.industry} companies in {target.state}"
+            else:
+                params["q"] = f"{target.industry} companies in {target.country}"
         
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 serp_resp = await client.get(self.serp_base_url, params=params)
                 serp_resp.raise_for_status()
-                results = serp_resp.json().get("organic_results", [])
+                data = serp_resp.json()
+                
+                # ✅ Google Maps returns "local_results" not "organic_results"
+                results = data.get("local_results", [])
+                if not results:
+                    # Fallback to places search
+                    params["type"] = "search"
+                    serp_resp = await client.get(self.serp_base_url, params=params)
+                    data = serp_resp.json()
+                    results = data.get("local_results", [])
                 
                 scraped = 0
                 for result in results[:10]:
-                    url = result.get("link")
-                    title = result.get("title", "")
+                    business_name = result.get("title", "").strip()
+                    website = result.get("website", "").strip()
+                    address = result.get("address", "")
+                    phone = result.get("phone", "")
+                    
+                    # Skip if no website or business name
+                    if not website or not business_name or "No website" in website:
+                        continue
                     
                     # Skip bad URLs BEFORE auditing
-                    if not url or "google.com" in url or self._should_skip_url(url, title):
-                        logger.info(f"Skipped (directory/listing): {url}")
+                    if self._should_skip_url(website, business_name):
+                        print(f"Skipped (non-business): {business_name} | {website}")
                         continue
                     
                     try:
+                        # ✅ Audit the BUSINESS website (not directory)
                         audit_resp = await client.post(
                             "http://localhost:3001/audit",
-                            json={"url": url},
+                            json={"url": website},
                             timeout=15
                         )
                         audit_resp.raise_for_status()
                         audit_data = audit_resp.json()
                         
                         if audit_data.get("success"):
-                            data = audit_data["data"]
-                            # Only save leads with emails OR good metrics
-                            if data.get("emails") or (data.get("ssl") and data.get("h1_count", 0) > 0):
-                                await database.save_lead({
-                                    "business_name": title or "Unknown Business",
-                                    "industry": target.industry,
-                                    "country": target.country,
-                                    "state": target.state,
-                                    "website": url,
-                                    "email": data["emails"][0] if data.get("emails") else None,
-                                    "load_time": data.get("load_time"),
-                                    "ssl_status": data.get("ssl"),
-                                    "h1_count": data.get("h1_count"),
-                                    "priority_score": self.calculate_priority(data),
-                                    "status": "AUDITED" if data.get("emails") else "SCRAPED"
-                                })
-                                scraped += 1
-                                logger.info(f"Saved lead: {title} | Email: {data.get('emails', [None])[0]}")
-                                if scraped >= 5:
-                                    break
+                            ad = audit_data["data"]
+                            # Save lead with business details
+                            await database.save_lead({
+                                "business_name": business_name,
+                                "industry": target.industry,
+                                "country": target.country,
+                                "state": target.state,
+                                "website": website,
+                                "email": ad["emails"][0] if ad.get("emails") else None,
+                                "load_time": ad.get("load_time"),
+                                "ssl_status": ad.get("ssl"),
+                                "h1_count": ad.get("h1_count"),
+                                "priority_score": self.calculate_priority(ad),
+                                "status": "AUDITED" if ad.get("emails") else "SCRAPED"
+                            })
+                            scraped += 1
+                            print(f"✅ Saved: {business_name} | Email: {ad.get('emails', [None])[0]} | {website}")
+                            if scraped >= 5:
+                                break
                     
                     except Exception as e:
                         error_detail = str(e)
                         if "timeout" in error_detail.lower():
-                            error_detail = "Timeout (site too slow)"
-                        elif "connect" in error_detail.lower():
-                            error_detail = "Connection failed"
-                        logger.warning(f"Audit failed for {url}: {error_detail}")
+                            error_detail = "Timeout"
+                        print(f"⚠️ Audit failed for {business_name} ({website}): {error_detail}")
                         continue
             
-            return {"success": True, "message": f"Scraped {scraped} qualified leads"}
+            return {"success": True, "message": f"Scraped {scraped} qualified business leads from Google Maps"}
         
         except Exception as e:
-            logger.error(f"SerpApi error: {e}")
+            print(f"❌ SerpApi error: {e}")
             return {"success": False, "message": f"SerpApi failed: {str(e)}"}
     
     def _should_skip_url(self, url, title):
-        """Skip directory/listing sites that won't have business emails"""
+        """Skip non-business URLs"""
         url_lower = url.lower()
         title_lower = title.lower() if title else ""
         
+        # Skip social media/profile sites
+        social_domains = ['facebook.com', 'instagram.com', 'twitter.com', 'linkedin.com', 'pinterest.com']
+        for domain in social_domains:
+            if domain in url_lower:
+                return True
+        
+        # Skip directories/aggregators
         for pattern in self.skip_patterns:
             if re.search(pattern, url_lower) or re.search(pattern, title_lower):
                 return True
         
-        # Skip non-business TLDs
-        if not re.search(r'\.(com|net|org|io|co)$', url_lower):
-            return True
-        
-        # Skip URLs with these path patterns
-        skip_paths = ['/careers', '/jobs', '/about', '/contact', '/team', '/press']
-        for path in skip_paths:
-            if path in url_lower:
+        # Skip non-commercial TLDs
+        non_business_tlds = ['.edu', '.gov', '.org/wiki', 'wikipedia.org']
+        for tld in non_business_tlds:
+            if tld in url_lower:
                 return True
         
         return False
