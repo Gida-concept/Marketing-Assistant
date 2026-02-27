@@ -93,15 +93,13 @@ class Engine:
             self.is_running = False
     
     async def scrape_leads(self, target, settings):
-        # ✅ FIX 1: Auto-correct location typos
+        # Auto-correct location typos
         state_raw = (target.state or "").strip()
         country_raw = (target.country or "").strip()
         
-        # Apply typo corrections
         state_corrected = self._correct_location(state_raw)
         country_corrected = self._correct_location(country_raw)
         
-        # Build location string
         location_parts = []
         if state_corrected:
             location_parts.append(state_corrected)
@@ -109,7 +107,6 @@ class Engine:
             location_parts.append(country_corrected)
         location_query = ", ".join(location_parts) if location_parts else "United States"
         
-        # Build Google Maps query
         query = f"{target.industry} company"
         logger.info(f"\n🔍 STEP 1: Google Maps Search")
         logger.info(f"   Query: '{query}'")
@@ -130,22 +127,32 @@ class Engine:
         
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                serp_resp = await client.get(self.serp_base_url, params=params)
+                # ✅ FIX: Proper variable scoping - define data AFTER successful request
+                serp_resp = None
+                data = None
                 
-                if serp_resp.status_code == 400:
-                    # ✅ FIX 2: Fallback on invalid location
-                    logger.warning("⚠️ SerpApi returned 400 Bad Request (invalid location)")
-                    logger.warning("   Attempting fallback with broader search (no location parameter)...")
-                    
-                    params.pop("location", None)
+                # First attempt with location parameter
+                try:
                     serp_resp = await client.get(self.serp_base_url, params=params)
                     serp_resp.raise_for_status()
-                    logger.info("✅ Fallback search successful")
-                else:
-                    serp_resp.raise_for_status()
+                    data = serp_resp.json()
+                    logger.info("✅ Location-based search successful")
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 400:
+                        logger.warning("⚠️ SerpApi returned 400 Bad Request (invalid location)")
+                        logger.warning("   Attempting fallback with broader search (no location parameter)...")
+                        
+                        # Fallback: Remove location parameter
+                        params.pop("location", None)
+                        serp_resp = await client.get(self.serp_base_url, params=params)
+                        serp_resp.raise_for_status()
+                        data = serp_resp.json()
+                        logger.info("✅ Fallback search successful")
+                    else:
+                        raise
                 
-                data = serp_resp.json()
-                results = data.get("local_results", [])
+                # ✅ CRITICAL FIX: data is now guaranteed to be defined here
+                results = data.get("local_results", []) if data else []
                 logger.info(f"\n✅ STEP 2: Search Results")
                 logger.info(f"   Total businesses found: {len(results)}")
                 
@@ -162,17 +169,14 @@ class Engine:
                     rating = result.get("rating", 0)
                     reviews = result.get("reviews", 0)
                     
-                    # Skip invalid entries
                     if not business_name or len(business_name) < 3:
                         logger.debug(f"   [#{idx}] Skipped (invalid name): {business_name}")
                         continue
                     
-                    # Skip non-business URLs
                     if website and self._should_skip_url(website, business_name):
                         logger.debug(f"   [#{idx}] Skipped (non-business URL): {business_name} | {website}")
                         continue
                     
-                    # ✅ STEP 3: Save as SCRAPED lead
                     lead_id = await database.save_lead({
                         "business_name": business_name[:250],
                         "industry": target.industry[:100],
@@ -189,7 +193,7 @@ class Engine:
                     })
                     scraped += 1
                     
-                    logger.info(f"\n✅ STEP 4: Lead #{scraped} Saved")
+                    logger.info(f"\n✅ STEP 3: Lead #{scraped} Saved")
                     logger.info(f"   ID: {lead_id}")
                     logger.info(f"   Business: {business_name}")
                     logger.info(f"   Website: {website or 'No website'}")
@@ -198,9 +202,8 @@ class Engine:
                     logger.info(f"   Rating: {rating} ({reviews} reviews)")
                     logger.info(f"   Status: SCRAPED (no email yet)")
                     
-                    # ✅ STEP 5: Audit website if available
                     if website:
-                        logger.info(f"\n🔍 STEP 5: Auditing Website (Lead #{scraped})")
+                        logger.info(f"\n🔍 STEP 4: Auditing Website (Lead #{scraped})")
                         logger.info(f"   URL: {website}")
                         
                         try:
@@ -217,7 +220,6 @@ class Engine:
                                 emails = ad.get("emails", [])
                                 has_email = bool(emails and emails[0])
                                 
-                                # Update lead with audit results
                                 update_data = {
                                     "load_time": ad.get("load_time"),
                                     "ssl_status": ad.get("ssl"),
@@ -229,14 +231,14 @@ class Engine:
                                 if has_email:
                                     update_data["email"] = emails[0][:255]
                                     update_data["status"] = "AUDITED"
-                                    logger.info(f"✅ STEP 6: Email Found (Lead #{scraped})")
+                                    logger.info(f"✅ STEP 5: Email Found (Lead #{scraped})")
                                     logger.info(f"   Email: {emails[0]}")
                                     logger.info(f"   SSL: {'✅ Yes' if ad.get('ssl') else '❌ No'}")
                                     logger.info(f"   Load Time: {ad.get('load_time', 0):.2f}s")
                                     logger.info(f"   H1 Tags: {ad.get('h1_count', 0)}")
                                     logger.info(f"   Status: AUDITED ✅")
                                 else:
-                                    logger.warning(f"⚠️ STEP 6: No Email Found (Lead #{scraped})")
+                                    logger.warning(f"⚠️ STEP 5: No Email Found (Lead #{scraped})")
                                     logger.info(f"   SSL: {'✅ Yes' if ad.get('ssl') else '❌ No'}")
                                     logger.info(f"   Load Time: {ad.get('load_time', 0):.2f}s")
                                     logger.info(f"   H1 Tags: {ad.get('h1_count', 0)}")
@@ -274,13 +276,11 @@ class Engine:
         
         location_lower = location.lower().strip()
         
-        # Check for exact matches in corrections dictionary
         for typo, correction in self.location_corrections.items():
             if location_lower == typo.lower():
                 logger.debug(f"   Auto-corrected location: '{location}' → '{correction}'")
                 return correction
         
-        # Fuzzy match for partial matches (e.g., "carlifonia" in "carlifonia, usa")
         for typo, correction in self.location_corrections.items():
             if typo.lower() in location_lower:
                 corrected = location.replace(typo, correction, 1)
@@ -297,18 +297,15 @@ class Engine:
         url_lower = url.lower()
         title_lower = title.lower() if title else ""
         
-        # Skip social media/profile sites
         social_domains = ['facebook.com', 'instagram.com', 'twitter.com', 'linkedin.com/in/', 'pinterest.com', 'wikipedia.org']
         for domain in social_domains:
             if domain in url_lower:
                 return True
         
-        # Skip directories/aggregators
         for pattern in self.skip_patterns:
             if re.search(pattern, url_lower) or re.search(pattern, title_lower):
                 return True
         
-        # Skip non-commercial TLDs in business context
         non_business_tlds = ['.edu', '.gov', '.org/wiki']
         for tld in non_business_tlds:
             if tld in url_lower:
