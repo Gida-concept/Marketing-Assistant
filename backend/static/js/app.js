@@ -40,12 +40,10 @@ function updateTime() {
 }
 
 function showNotification(message, type = 'info') {
-    // Remove any existing notifications
     const existing = document.querySelector('.notification');
     if (existing) existing.remove();
 
     const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
     notification.style.cssText = `
         position: fixed;
         top: 20px;
@@ -62,35 +60,11 @@ function showNotification(message, type = 'info') {
     
     document.body.appendChild(notification);
     
-    // Auto-remove after 5 seconds
     setTimeout(() => {
         if (notification.parentNode) {
             notification.remove();
         }
     }, 5000);
-}
-
-async function apiRequest(url, options = {}) {
-    try {
-        const response = await fetch(url, {
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            ...options
-        });
-
-        const data = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(data.detail || 'API request failed');
-        }
-        
-        return { success: true, data };
-    } catch (error) {
-        console.error('API Request Error:', error);
-        return { success: false, error: error.message };
-    }
 }
 
 // Settings Form
@@ -102,20 +76,19 @@ function setupSettingsForm() {
         e.preventDefault();
         
         const formData = new FormData(form);
-        const data = {};
-        for (let [key, value] of formData.entries()) {
-            if (value) data[key] = value;
-        }
 
-        const result = await apiRequest('/settings/api', {
+        const response = await fetch('/settings/api', {
             method: 'POST',
-            body: new URLSearchParams(formData)
+            body: formData
         });
 
-        if (result.success) {
+        const data = await response.json();
+        
+        if (response.ok) {
             showNotification('Settings saved successfully!', 'success');
         } else {
-            showNotification(`Failed to save settings: ${result.error}`, 'error');
+            const errorMsg = data.detail || data.message || JSON.stringify(data);
+            showNotification(`Failed to save settings: ${errorMsg}`, 'error');
         }
     });
 }
@@ -142,18 +115,20 @@ function setupTargetForm() {
         formData.append('country', country);
         if (state) formData.append('state', state);
 
-        const result = await apiRequest('/targets/api', {
+        const response = await fetch('/targets/api', {
             method: 'POST',
             body: formData
         });
 
-        if (result.success) {
+        const data = await response.json();
+        
+        if (response.ok) {
             showNotification('Target added successfully!', 'success');
             form.reset();
-            // Refresh targets table
             loadTargets();
         } else {
-            showNotification(`Failed to add target: ${result.error}`, 'error');
+            const errorMsg = data.detail || data.message || JSON.stringify(data);
+            showNotification(`Failed to add target: ${errorMsg}`, 'error');
         }
     });
 
@@ -165,19 +140,19 @@ function setupTargetForm() {
             }
 
             const targetId = e.target.dataset.id;
-            const result = await apiRequest(`/targets/api/${targetId}`, {
+            
+            const response = await fetch(`/targets/api/${targetId}`, {
                 method: 'DELETE'
             });
 
-            if (result.success) {
+            const data = await response.json();
+            
+            if (response.ok) {
                 showNotification('Target deleted successfully!', 'success');
-                // Remove row from table
-                const row = e.target.closest('tr');
-                if (row) row.remove();
-                // Refresh table
                 loadTargets();
             } else {
-                showNotification(`Failed to delete target: ${result.error}`, 'error');
+                const errorMsg = data.detail || data.message || JSON.stringify(data);
+                showNotification(`Failed to delete target: ${errorMsg}`, 'error');
             }
         }
     });
@@ -192,7 +167,6 @@ async function loadTargets() {
         const response = await fetch('/targets/api');
         const data = await response.json();
         
-        // Clear existing rows
         tbody.innerHTML = '';
         
         if (!data.targets || data.targets.length === 0) {
@@ -235,17 +209,19 @@ function setupEngineControl() {
         const formData = new FormData();
         formData.append('action', action);
         
-        const result = await apiRequest('/campaign/api/control', {
+        const response = await fetch('/campaign/api/control', {
             method: 'POST',
             body: formData
         });
 
-        if (result.success) {
+        const data = await response.json();
+        
+        if (response.ok) {
             showNotification(`Engine ${action === 'start' ? 'started' : 'stopped'} successfully!`, 'success');
-            // Reload page to update state
             setTimeout(() => location.reload(), 1000);
         } else {
-            showNotification(`Failed to control engine: ${result.error}`, 'error');
+            const errorMsg = data.detail || data.message || JSON.stringify(data);
+            showNotification(`Failed to control engine: ${errorMsg}`, 'error');
         }
     });
 }
@@ -260,16 +236,18 @@ function setupManualRun() {
             return;
         }
 
-        const result = await apiRequest('/campaign/api/run', {
+        const response = await fetch('/campaign/api/run', {
             method: 'POST'
         });
 
-        if (result.success) {
+        const data = await response.json();
+        
+        if (response.ok) {
             showNotification('Manual execution triggered!', 'success');
-            // Reload to see updated status
             setTimeout(() => location.reload(), 2000);
         } else {
-            showNotification(`Failed to start manual run: ${result.error}`, 'error');
+            const errorMsg = data.detail || data.message || JSON.stringify(data);
+            showNotification(`Failed to start manual run: ${errorMsg}`, 'error');
         }
     });
 }
@@ -281,24 +259,28 @@ function setupTestButtons() {
 
     if (testSmtp) {
         testSmtp.addEventListener('click', async function() {
-            const result = await apiRequest('/settings/test/smtp');
+            const response = await fetch('/settings/test/smtp');
+            const data = await response.json();
             
-            if (result.success) {
+            if (response.ok) {
                 showNotification('SMTP test successful! Check your inbox.', 'success');
             } else {
-                showNotification(`SMTP test failed: ${result.data?.message || result.error}`, 'error');
+                const errorMsg = data.detail || data.message || JSON.stringify(data);
+                showNotification(`SMTP test failed: ${errorMsg}`, 'error');
             }
         });
     }
 
     if (testTelegram) {
         testTelegram.addEventListener('click', async function() {
-            const result = await apiRequest('/settings/test/telegram');
+            const response = await fetch('/settings/test/telegram');
+            const data = await response.json();
             
-            if (result.success) {
+            if (response.ok) {
                 showNotification('Telegram test message sent!', 'success');
             } else {
-                showNotification(`Telegram test failed: ${result.data?.message || result.error}`, 'error');
+                const errorMsg = data.detail || data.message || JSON.stringify(data);
+                showNotification(`Telegram test failed: ${errorMsg}`, 'error');
             }
         });
     }
@@ -325,7 +307,7 @@ function applyFilters() {
     const rows = document.querySelectorAll('#leads-table tbody tr');
     
     rows.forEach(row => {
-        if (!row.dataset.id) return; // Skip template rows
+        if (!row.dataset.id) return;
         
         const rowStatus = row.querySelector('td:nth-child(8)')?.textContent.toLowerCase() || '';
         const rowIndustry = row.querySelector('td:nth-child(3)')?.textContent.toLowerCase() || '';
@@ -341,7 +323,6 @@ function applyFilters() {
     });
 }
 
-// Debounce utility
 function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -354,7 +335,6 @@ function debounce(func, wait) {
     };
 }
 
-// Flash messages
 function checkFlashMessages() {
     const urlParams = new URLSearchParams(window.location.search);
     const msg = urlParams.get('msg');
@@ -363,7 +343,6 @@ function checkFlashMessages() {
     if (msg) {
         showNotification(decodeURIComponent(msg), type);
         
-        // Remove params from URL without reloading
         const newUrl = new URL(window.location);
         newUrl.searchParams.delete('msg');
         newUrl.searchParams.delete('type');
