@@ -1,18 +1,20 @@
 import httpx
 import asyncio
 import re
-from .database import database
+import logging
+from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 class Engine:
     def __init__(self):
         self.is_running = False
         self.serp_base_url = "https://serpapi.com/search"
-        # Skip patterns for non-business URLs
         self.skip_patterns = [
             r'builtin\.com', r'builtinsf\.com', r'thegoodtrade\.com',
             r'toddshelton\.com', r'directory', r'listings?', r'blog',
             r'/blog/', r'/features/', r'/companies/', r'fashion-companies',
-            r'wikipedia', r'linkedin\.com/company', r'crunchbase', r'glassdoor'
+            r'wikipedia', r'crunchbase', r'glassdoor', r'yelp\.com'
         ]
     
     async def run(self):
@@ -52,33 +54,35 @@ class Engine:
         
         except Exception as e:
             import traceback
-            print(f"Engine crash: {e}\n{traceback.format_exc()}")
+            logger.error(f"Engine crash: {e}\n{traceback.format_exc()}")
             return {"success": False, "message": f"Engine error: {str(e)}"}
         finally:
             self.is_running = False
     
     async def scrape_leads(self, target, settings):
-        # ✅ CORRECT: Use Google Maps engine for business listings
-        query = f"{target.industry} companies"
-        location = f"{target.state}, {target.country}" if target.state else target.country
+        # Build location string from target (supports international formats)
+        location_parts = []
+        if target.state:
+            location_parts.append(target.state.strip())
+        if target.country:
+            location_parts.append(target.country.strip())
+        location_query = ", ".join(location_parts) if location_parts else "United States"
         
+        # Build Google Maps query
+        query = f"{target.industry} company"
+        
+        # ✅ FIX: Use human-readable location parameter (no hardcoded coords)
+        # SerpApi handles geocoding internally for 200+ countries
         params = {
-            "engine": "google_maps",  # ← CRITICAL FIX: Use Google Maps engine
+            "engine": "google_maps",
             "q": query,
             "api_key": settings.serp_api_key,
             "type": "search",
-            "ll": "@37.7749,-122.4194,14z",  # Default to SF if no coords
+            "location": location_query,  # ✅ International support (e.g., "London, UK", "Paris, France")
             "google_domain": "google.com",
             "hl": "en",
             "gl": "us"
         }
-        
-        # Add location-specific parameters
-        if "united states" in target.country.lower() or "usa" in target.country.lower():
-            if target.state:
-                params["q"] = f"{target.industry} companies in {target.state}"
-            else:
-                params["q"] = f"{target.industry} companies in {target.country}"
         
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -86,82 +90,116 @@ class Engine:
                 serp_resp.raise_for_status()
                 data = serp_resp.json()
                 
-                # ✅ Google Maps returns "local_results" not "organic_results"
+                # Google Maps returns "local_results" with business data
                 results = data.get("local_results", [])
+                logger.info(f"Google Maps returned {len(results)} businesses for '{query}' in {location_query}")
+                
                 if not results:
-                    # Fallback to places search
-                    params["type"] = "search"
+                    # Fallback: Try without location parameter (broader search)
+                    logger.warning(f"No results for location '{location_query}', trying broader search")
+                    params.pop("location", None)
                     serp_resp = await client.get(self.serp_base_url, params=params)
                     data = serp_resp.json()
                     results = data.get("local_results", [])
+                    logger.info(f"Broad search returned {len(results)} businesses")
                 
                 scraped = 0
-                for result in results[:10]:
+                for result in results[:15]:
                     business_name = result.get("title", "").strip()
                     website = result.get("website", "").strip()
                     address = result.get("address", "")
                     phone = result.get("phone", "")
+                    rating = result.get("rating", 0)
+                    reviews = result.get("reviews", 0)
                     
-                    # Skip if no website or business name
-                    if not website or not business_name or "No website" in website:
+                    # Skip invalid entries
+                    if not business_name or len(business_name) < 3:
                         continue
                     
-                    # Skip bad URLs BEFORE auditing
-                    if self._should_skip_url(website, business_name):
-                        print(f"Skipped (non-business): {business_name} | {website}")
+                    # Skip non-business URLs BEFORE saving
+                    if website and self._should_skip_url(website, business_name):
+                        logger.debug(f"Skipped non-business URL: {business_name} | {website}")
                         continue
                     
-                    try:
-                        # ✅ Audit the BUSINESS website (not directory)
-                        audit_resp = await client.post(
-                            "http://localhost:3001/audit",
-                            json={"url": website},
-                            timeout=15
-                        )
-                        audit_resp.raise_for_status()
-                        audit_data = audit_resp.json()
-                        
-                        if audit_data.get("success"):
-                            ad = audit_data["data"]
-                            # Save lead with business details
-                            await database.save_lead({
-                                "business_name": business_name,
-                                "industry": target.industry,
-                                "country": target.country,
-                                "state": target.state,
-                                "website": website,
-                                "email": ad["emails"][0] if ad.get("emails") else None,
-                                "load_time": ad.get("load_time"),
-                                "ssl_status": ad.get("ssl"),
-                                "h1_count": ad.get("h1_count"),
-                                "priority_score": self.calculate_priority(ad),
-                                "status": "AUDITED" if ad.get("emails") else "SCRAPED"
-                            })
-                            scraped += 1
-                            print(f"✅ Saved: {business_name} | Email: {ad.get('emails', [None])[0]} | {website}")
-                            if scraped >= 5:
-                                break
+                    # ✅ ALWAYS save lead as SCRAPED status (even without email/website)
+                    lead_id = await database.save_lead({
+                        "business_name": business_name[:250],
+                        "industry": target.industry[:100],
+                        "country": target.country[:100],
+                        "state": (target.state or "")[:100],
+                        "website": website[:255] if website else None,
+                        "email": None,
+                        "load_time": None,
+                        "ssl_status": None,
+                        "h1_count": 0,
+                        "priority_score": 30,
+                        "status": "SCRAPED",
+                        "audit_notes": f"Address: {address}, Phone: {phone}, Rating: {rating} ({reviews} reviews)"
+                    })
+                    scraped += 1
+                    logger.info(f"✅ SCRAPED: {business_name} | {website or 'No website'} | Location: {location_query}")
                     
-                    except Exception as e:
-                        error_detail = str(e)
-                        if "timeout" in error_detail.lower():
-                            error_detail = "Timeout"
-                        print(f"⚠️ Audit failed for {business_name} ({website}): {error_detail}")
-                        continue
-            
-            return {"success": True, "message": f"Scraped {scraped} qualified business leads from Google Maps"}
+                    # Audit website if available
+                    if website:
+                        try:
+                            audit_resp = await client.post(
+                                "http://localhost:3001/audit",
+                                json={"url": website},
+                                timeout=20
+                            )
+                            audit_resp.raise_for_status()
+                            audit_data = audit_resp.json()
+                            
+                            if audit_data.get("success"):
+                                ad = audit_data["data"]
+                                emails = ad.get("emails", [])
+                                
+                                # Update lead with audit results
+                                update_data = {
+                                    "load_time": ad.get("load_time"),
+                                    "ssl_status": ad.get("ssl"),
+                                    "h1_count": ad.get("h1_count", 0),
+                                    "priority_score": self.calculate_priority(ad),
+                                    "audit_notes": f"SSL: {ad.get('ssl')}, Load: {ad.get('load_time', 0):.2f}s, H1s: {ad.get('h1_count', 0)}, Emails found: {len(emails)}"
+                                }
+                                
+                                if emails and emails[0]:
+                                    update_data["email"] = emails[0][:255]
+                                    update_data["status"] = "AUDITED"
+                                    logger.info(f"📧 AUDITED (+email): {business_name} | {emails[0]}")
+                                else:
+                                    logger.warning(f"⚠️ No email found on {website} (kept as SCRAPED)")
+                                
+                                await database.update_lead(lead_id, update_data)
+                            
+                        except Exception as e:
+                            error_detail = str(e)
+                            if "timeout" in error_detail.lower():
+                                error_detail = "Timeout"
+                            elif "connect" in error_detail.lower():
+                                error_detail = "Connection failed"
+                            logger.warning(f"⚠️ Audit failed for {business_name} ({website}): {error_detail}")
+                    
+                    if scraped >= 10:
+                        break
+                
+                logger.info(f"✅ Scraping completed: {scraped} leads saved from Google Maps")
+                return {"success": True, "message": f"Scraped {scraped} business leads"}
         
         except Exception as e:
-            print(f"❌ SerpApi error: {e}")
+            logger.error(f"SerpApi error: {e}")
             return {"success": False, "message": f"SerpApi failed: {str(e)}"}
     
     def _should_skip_url(self, url, title):
         """Skip non-business URLs"""
+        if not url:
+            return False
+        
         url_lower = url.lower()
         title_lower = title.lower() if title else ""
         
         # Skip social media/profile sites
-        social_domains = ['facebook.com', 'instagram.com', 'twitter.com', 'linkedin.com', 'pinterest.com']
+        social_domains = ['facebook.com', 'instagram.com', 'twitter.com', 'linkedin.com/in/', 'pinterest.com', 'wikipedia.org']
         for domain in social_domains:
             if domain in url_lower:
                 return True
@@ -171,8 +209,8 @@ class Engine:
             if re.search(pattern, url_lower) or re.search(pattern, title_lower):
                 return True
         
-        # Skip non-commercial TLDs
-        non_business_tlds = ['.edu', '.gov', '.org/wiki', 'wikipedia.org']
+        # Skip non-commercial TLDs in business context
+        non_business_tlds = ['.edu', '.gov', '.org/wiki']
         for tld in non_business_tlds:
             if tld in url_lower:
                 return True
@@ -191,10 +229,13 @@ class Engine:
     
     async def start(self):
         await database.update_engine_state(is_enabled=True)
-        return {"success": True, "message": "Engine enabled. Will run immediately and daily at 8:00 AM UTC"}
+        return {"success": True, "message": "Engine enabled"}
     
     async def stop(self):
         await database.update_engine_state(is_enabled=False)
         return {"success": True, "message": "Engine disabled"}
+
+# Import database AFTER class definition to avoid circular import
+from .database import database
 
 engine = Engine()
