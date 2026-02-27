@@ -136,17 +136,17 @@ class Database:
 
     async def update_engine_state(self, is_enabled=None, is_running=None):
         async for session in self.get_session():
-            data = {}
+            update_data = {}
             if is_enabled is not None:
-                data['is_enabled'] = is_enabled
+                update_data['is_enabled'] = is_enabled
             if is_running is not None:
-                data['is_running'] = is_running
-            await session.execute(update(EngineState).where(EngineState.id == 1).values(**data))
+                update_data['is_running'] = is_running
+            await session.execute(update(EngineState).where(EngineState.id == 1).values(**update_data))
             await session.commit()
 
-    async def create_target(self,  dict):
+    async def create_target(self, industry: str, country: str, state: str = None):
         async for session in self.get_session():
-            target = Targets(**data)
+            target = Targets(industry=industry, country=country, state=state)
             session.add(target)
             await session.commit()
 
