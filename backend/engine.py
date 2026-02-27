@@ -109,6 +109,9 @@ class Engine:
         
         try:
             async with httpx.AsyncClient(timeout=30) as client:
+                # Initialize data variable at the correct scope
+                data = None
+                
                 # First attempt with location parameter (if provided)
                 try:
                     serp_resp = await client.get(self.serp_base_url, params=params)
@@ -129,6 +132,10 @@ class Engine:
                     else:
                         raise
                 
+                # Verify data was retrieved successfully
+                if data is None:
+                    raise Exception("Failed to retrieve data from SerpApi")
+                
                 # Now data is guaranteed to be defined
                 results = data.get("local_results", [])
                 logger.info(f"\n✅ STEP 2: Search Results")
@@ -139,7 +146,7 @@ class Engine:
                     return {"success": False, "message": "No businesses found for this target"}
                 
                 scraped = 0
-                # ✅ FIX: Loop through results with proper data scope
+                # Loop through results with proper data scope
                 for idx, result in enumerate(results[:10], 1):
                     business_name = result.get("title", "").strip()
                     website = result.get("website", "").strip()
