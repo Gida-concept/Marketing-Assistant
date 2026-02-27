@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 
 # Local imports
 from ..database import database
+from ..engine import engine
 
 # Template setup
 templates = Jinja2Templates(directory="backend/templates")
@@ -33,9 +34,14 @@ async def get_engine_state_api():
 @router.post("/campaign/api/control")
 async def control_engine_api(action: str = Form(...)):
     if action == "start":
-        await database.update_engine_state(is_enabled=True)
-        return JSONResponse({"success": True, "message": "Engine started"})
+        result = await engine.start()
+        return JSONResponse(result)
     elif action == "stop":
-        await database.update_engine_state(is_enabled=False)
-        return JSONResponse({"success": True, "message": "Engine stopped"})
+        result = await engine.stop()
+        return JSONResponse(result)
     return JSONResponse(status_code=400, content={"detail": "Invalid action"})
+
+@router.post("/campaign/api/run")
+async def manual_run_api():
+    result = await engine.run()
+    return JSONResponse(result)
