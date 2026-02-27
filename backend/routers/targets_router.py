@@ -23,18 +23,20 @@ async def get_targets_api():
 
 @router.post("/targets/api")
 async def add_target_api(
-    industry: str = Form(...),
-    country: str = Form(...),
+    industry: str = Form(None),
+    country: str = Form(None),
     state: str = Form(None)
 ):
     try:
-        if not industry or not country:
-            return JSONResponse(status_code=400, content={"detail": "Industry and country required"})
+        if not industry or not industry.strip():
+            return JSONResponse(status_code=400, content={"detail": "Industry is required"})
+        if not country or not country.strip():
+            return JSONResponse(status_code=400, content={"detail": "Country is required"})
         
         await database.create_target({
             "industry": industry.strip(),
             "country": country.strip(),
-            "state": state.strip() if state else None
+            "state": state.strip() if state and state.strip() else None
         })
         
         return JSONResponse({"success": True, "message": "Target added successfully"})
