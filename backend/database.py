@@ -1,4 +1,3 @@
-# backend/database.py
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select, update, delete
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -102,27 +101,33 @@ class Database:
 
     async def get_settings(self):
         async for session in self.get_session():
-            return (await session.execute(select(Settings).limit(1))).scalars().first()
+            result = await session.execute(select(Settings).limit(1))
+            return result.scalars().first()
 
     async def get_engine_state(self):
         async for session in self.get_session():
-            return (await session.execute(select(EngineState).limit(1))).scalars().first()
+            result = await session.execute(select(EngineState).limit(1))
+            return result.scalars().first()
 
     async def get_config(self):
         async for session in self.get_session():
-            return (await session.execute(select(Config).limit(1))).scalars().first()
+            result = await session.execute(select(Config).limit(1))
+            return result.scalars().first()
 
     async def get_stats(self):
         async for session in self.get_session():
-            return (await session.execute(select(Stats).limit(1))).scalars().first()
+            result = await session.execute(select(Stats).limit(1))
+            return result.scalars().first()
 
     async def get_all_targets(self):
         async for session in self.get_session():
-            return (await session.execute(select(Targets))).scalars().all()
+            result = await session.execute(select(Targets))
+            return result.scalars().all() or []
 
     async def get_all_leads(self):
         async for session in self.get_session():
-            return (await session.execute(select(Leads).order_by(Leads.id.desc()))).scalars().all()
+            result = await session.execute(select(Leads).order_by(Leads.id.desc()))
+            return result.scalars().all() or []
 
     async def count_leads_by_status(self, status: str):
         async for session in self.get_session():
@@ -132,14 +137,17 @@ class Database:
     async def update_engine_state(self, is_enabled=None, is_running=None):
         async for session in self.get_session():
             data = {}
-            if is_enabled is not None: data['is_enabled'] = is_enabled
-            if is_running is not None: data['is_running'] = is_running
+            if is_enabled is not None:
+                data['is_enabled'] = is_enabled
+            if is_running is not None:
+                data['is_running'] = is_running
             await session.execute(update(EngineState).where(EngineState.id == 1).values(**data))
             await session.commit()
 
-    async def create_target(self, data: dict):
+    async def create_target(self,  dict):
         async for session in self.get_session():
-            session.add(Targets(**data))
+            target = Targets(**data)
+            session.add(target)
             await session.commit()
 
     async def delete_target(self, target_id: int):
