@@ -157,7 +157,7 @@ class Database:
             await session.execute(delete(Targets).where(Targets.id == target_id))
             await session.commit()
 
-    async def save_lead(self,  dict):
+    async def save_lead(self, data: dict):  # ✅ FIXED: Added parameter name 'data'
         async for session in self.get_session():
             lead = Leads(**data)
             session.add(lead)
