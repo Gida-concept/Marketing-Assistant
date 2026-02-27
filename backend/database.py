@@ -165,7 +165,7 @@ class Database:
             logger.info(f"Saved lead: {lead.business_name} | {lead.website}")
             return lead.id
 
-    async def update_lead(self, lead_id: int, update_ dict):
+    async def update_lead(self, lead_id: int, update_data: dict):
         async for session in self.get_session():
             await session.execute(update(Leads).where(Leads.id == lead_id).values(**update_data))
             await session.commit()
@@ -184,7 +184,7 @@ class Database:
 # Global database instance
 database = Database()
 
-# ✅ CRITICAL: Export models for router imports
+# Export models for external imports
 Settings = Settings
 Targets = Targets
 Leads = Leads
