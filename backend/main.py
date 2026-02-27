@@ -1,4 +1,3 @@
-# backend/main.py
 from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -25,7 +24,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="backend/static"), name="static")
 
-# === INCLUDE ALL ROUTERS ===
 from .routers.settings_router import router as settings_router
 from .routers.targets_router import router as targets_router
 from .routers.campaign_router import router as campaign_router
@@ -37,7 +35,6 @@ app.include_router(targets_router)
 app.include_router(campaign_router)
 app.include_router(leads_router)
 app.include_router(stats_router)
-# ===========================
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
@@ -45,13 +42,21 @@ async def root(request: Request):
     settings = await database.get_settings()
     config = await database.get_config()
     stats = await database.get_stats()
+    
+    current_target = None
+    targets = await database.get_all_targets()
+    if targets:
+        current_target = await database.get_target_by_indices(
+            config.industry_idx, config.location_idx
+        )
+    
     return templates.TemplateResponse("index.html", {
         "request": request,
         "engine_state": engine_state,
         "settings": settings,
         "config": config,
         "stats": stats,
-        "current_target": None
+        "current_target": current_target
     })
 
 @app.post("/engine/control")
