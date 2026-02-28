@@ -27,6 +27,7 @@ class Scheduler:
             )
             self.scheduler.start()
             logger.info(f"Scheduler started. Daily job '{self.job_id}' scheduled for 8:00 AM UTC.")
+            # Note: Removed the immediate call to _scheduled_execution
 
     async def shutdown(self):
         """Shutdown the scheduler."""
