@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 class Engine:
     def __init__(self):
-        self.is_running = False
+        self.is_running = False # Internal flag for this instance
         self.serp_base_url = "https://serpapi.com/search"
         self.skip_patterns = [
             r'builtin\.com', r'builtinsf\.com', r'thegoodtrade\.com',
@@ -18,11 +18,15 @@ class Engine:
         ]
 
     async def run(self):
+        # Prevent concurrent runs of this instance
         if self.is_running:
-            return {"success": False, "message": "Engine already running"}
+            logger.warning("Engine.run() called while already running on this instance. Skipping.")
+            return {"success": False, "message": "Engine already running on this instance"}
 
         self.is_running = True
         try:
+            # Update database state to RUNNING
+            await database.update_engine_state(is_running=True)
             logger.info("=" * 60)
             logger.info("🚀 ENGINE EXECUTION STARTED")
             logger.info("=" * 60)
@@ -59,10 +63,14 @@ class Engine:
             else:
                 logger.info("✅ Inventory sufficient - skipping scraping phase")
 
+            # Update config for next cycle
             await database.update_config(
                 industry_idx=(config.industry_idx + 1) % len(targets),
                 location_idx=config.location_idx
             )
+
+            # Update database state's last run date
+            await database.update_engine_state(last_run_date=datetime.utcnow())
 
             logger.info("=" * 60)
             logger.info("✅ ENGINE EXECUTION COMPLETED")
@@ -74,7 +82,9 @@ class Engine:
             logger.error(f"💥 Engine crash: {e}\n{traceback.format_exc()}")
             return {"success": False, "message": f"Engine error: {str(e)}"}
         finally:
+            # Reset internal flag and database state
             self.is_running = False
+            await database.update_engine_state(is_running=False)
 
     async def scrape_leads(self, target, settings):
         # Build location string
@@ -107,9 +117,8 @@ class Engine:
         if location_query:
             params["location"] = location_query
 
-        # --- CRITICAL FIX: Initialize 'data' variable at function scope ---
+        # Initialize 'data' variable at function scope
         data = None
-        # --------------------------------------------------------------
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -117,7 +126,7 @@ class Engine:
                 try:
                     serp_resp = await client.get(self.serp_base_url, params=params)
                     serp_resp.raise_for_status()
-                    data = serp_resp.json() # <- Assign to the function-scoped 'data'
+                    data = serp_resp.json() # Assign to the function-scoped 'data'
                     logger.info("✅ Location-based search successful")
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code == 400:
@@ -128,12 +137,12 @@ class Engine:
                         params.pop("location", None)
                         serp_resp = await client.get(self.serp_base_url, params=params)
                         serp_resp.raise_for_status()
-                        data = serp_resp.json() # <- Assign to the function-scoped 'data'
+                        data = serp_resp.json() # Assign to the function-scoped 'data'
                         logger.info("✅ Fallback search successful (global results)")
                     else:
                         raise
 
-                # --- CRITICAL FIX: Ensure 'data' is defined before accessing ---
+                # Ensure 'data' is defined before accessing
                 if data is None:
                     logger.error("❌ SerpApi returned no data.")
                     return {"success": False, "message": "SerpApi returned no data"}
@@ -148,9 +157,10 @@ class Engine:
                     return {"success": False, "message": "No businesses found for this target"}
 
                 scraped = 0
-                # --- CRITICAL FIX: Loop uses 'results' which depends on 'data' ---
+                processed_websites = set() # Track websites processed in this cycle to avoid re-processing duplicates from the same search
+
+                # Loop through results
                 for idx, result in enumerate(results[:10], 1):
-                # -----------------------------------------------------------------
                     business_name = result.get("title", "").strip()
                     website = result.get("website", "").strip()
                     address = result.get("address", "")
@@ -161,6 +171,24 @@ class Engine:
                     if not business_name or len(business_name) < 3:
                         logger.debug(f"   [#{idx}] Skipped (invalid name): {business_name}")
                         continue
+
+                    # Skip if no website or already processed in this cycle
+                    if not website or website in processed_websites:
+                         if not website:
+                             logger.debug(f"   [#{idx}] Skipped (no website): {business_name}")
+                         else:
+                             logger.debug(f"   [#{idx}] Skipped (duplicate in cycle): {website}")
+                         continue
+
+                    # Check if lead with this website already exists in the database
+                    existing_lead = await database.get_lead_by_website(website)
+                    if existing_lead:
+                        logger.info(f"   [#{idx}] Skipped (already exists in DB): {website}")
+                        processed_websites.add(website)
+                        continue # Skip saving this lead
+
+                    # Add to processed set for this cycle
+                    processed_websites.add(website)
 
                     if website and self._should_skip_url(website, business_name):
                         logger.debug(f"   [#{idx}] Skipped (non-business URL): {business_name} | {website}")
@@ -296,14 +324,20 @@ class Engine:
         return min(100, max(0, score))
 
     async def start(self):
+        # Only update the enabled flag in the database
         await database.update_engine_state(is_enabled=True)
         return {"success": True, "message": "Engine enabled"}
 
     async def stop(self):
+        # Only update the enabled flag in the database
         await database.update_engine_state(is_enabled=False)
         return {"success": True, "message": "Engine disabled"}
 
 # Import database AFTER class definition to avoid circular import
+# Assume 'database' and 'datetime' are available in the scope where Engine is instantiated
+# You might need to pass the database instance or import it differently depending on your structure
+# For now, assuming it's imported globally within this module or handled by the caller
 from .database import database
+from datetime import datetime # Import datetime for updating last_run_date
 
 engine = Engine()
