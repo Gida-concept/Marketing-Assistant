@@ -1,4 +1,3 @@
-# backend/database.py
 import logging
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, Float, select, update, delete
 from sqlalchemy.ext.declarative import declarative_base
@@ -132,18 +131,28 @@ class Database:
             result = await session.execute(select(Leads).order_by(Leads.id.desc()))
             return result.scalars().all() or []
 
+    # --- ADDED METHOD ---
+    async def get_lead_by_website(self, website: str):
+        """Fetch a lead by its website URL."""
+        async for session in self.get_session():
+            result = await session.execute(select(Leads).where(Leads.website == website))
+            return result.scalars().first()
+    # --------------------
+
     async def count_leads_by_status(self, status: str):
         async for session in self.get_session():
             result = await session.execute(select(Leads).where(Leads.status == status))
             return len(result.scalars().all())
 
-    async def update_engine_state(self, is_enabled=None, is_running=None):
+    async def update_engine_state(self, is_enabled=None, is_running=None, last_run_date=None):
         async for session in self.get_session():
             update_data = {}
             if is_enabled is not None:
                 update_data['is_enabled'] = is_enabled
             if is_running is not None:
                 update_data['is_running'] = is_running
+            if last_run_date is not None:
+                update_data['last_run_date'] = last_run_date
             await session.execute(update(EngineState).where(EngineState.id == 1).values(**update_data))
             await session.commit()
 
@@ -158,7 +167,7 @@ class Database:
             await session.execute(delete(Targets).where(Targets.id == target_id))
             await session.commit()
 
-    # Fixed: Added 'data' parameter name
+    # Fixed: Added parameter name 'data'
     async def save_lead(self, data: dict):
         async for session in self.get_session():
             lead = Leads(**data)
@@ -167,7 +176,7 @@ class Database:
             logger.info(f"Saved lead: {lead.business_name} | {lead.website}")
             return lead.id
 
-    async def update_lead(self, lead_id: int, update_data: dict):
+    async def update_lead(self, lead_id: int, update_ dict):
         async for session in self.get_session():
             await session.execute(update(Leads).where(Leads.id == lead_id).values(**update_data))
             await session.commit()
